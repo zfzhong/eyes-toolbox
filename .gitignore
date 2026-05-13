@@ -1,0 +1,25 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+.venv/
+venv/
+build/
+dist/
+
+# Local Chronicle data and generated toolbox outputs.
+processed/
+*/processed/
+visual/
+*/visual/
+a*_cohort_*
+
+# LaTeX build artifacts. Keep the source .tex and exported .pdf.
+docs/*.aux
+docs/*.bbl
+docs/*.blg
+docs/*.log
+docs/*.out
+docs/*.toc
+docs/*.synctex.gz

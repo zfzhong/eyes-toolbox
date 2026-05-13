@@ -1,0 +1,59 @@
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+def gen_key(filename):
+    tokens = filename.split('_')
+    key = "%s_%s" % (tokens[0], tokens[1])
+    return key
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage:", sys.argv[0], "<raw_dir>")
+        sys.exit(1)
+
+    raw_dir = Path(sys.argv[1])
+    raw_files = [f for f in raw_dir.glob("*.csv")]
+
+    events_dir = Path(sys.argv[1]+'/processed')
+    events_files = [f for f in events_dir.glob("*.csv") if re.search(r'_events.csv$', f.name)]
+
+    m = {}
+    for c in raw_files:
+        filename = c.name
+        
+        key = gen_key(filename)
+        if not key in m:
+            m[key] = [c]
+
+    for b in events_files:
+        filename = b.name
+        
+        key = gen_key(filename)
+        if key in m:
+            m[key].append(b)
+
+    total = len(m)
+    for index, key in enumerate(m, start=1):
+        if not len(m[key]) == 2:
+            continue
+
+        raw_file = m[key][0]
+        events_file = m[key][1]
+        
+        events_filename = events_file.name
+
+        tz_filename = events_filename.replace("_events.csv", "_events_tz.csv")  
+
+        cmd = [
+            sys.executable,
+            "-m",
+            "eyeslib.exports.gen_timezone_columns_for_events",
+            str(raw_file),
+            str(events_file),
+            str(events_dir / tz_filename),
+        ]
+        print(f"[{index}/{total}] {events_file.name}")
+        print(" ".join(cmd))
+        subprocess.run(cmd, check=True)

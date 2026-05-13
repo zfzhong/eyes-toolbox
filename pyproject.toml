@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eyes-toolbox"
+version = "0.1.0"
+description = "Chronicle Android activity-log processing toolbox with GUI and Makefile pipeline."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "matplotlib>=3.7",
+    "pandas>=2.0",
+]
+
+[project.scripts]
+eyes-toolbox = "eyeslib.gui.app:main"
+
+[tool.setuptools.packages.find]
+include = ["eyeslib*"]
