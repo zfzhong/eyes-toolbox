@@ -16,6 +16,7 @@ visual/
 a*_cohort_*
 
 # LaTeX build artifacts. Keep the source .tex and exported .pdf.
+docs/*.tex
 docs/*.aux
 docs/*.bbl
 docs/*.blg
