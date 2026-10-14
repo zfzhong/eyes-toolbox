@@ -19,7 +19,9 @@ if __name__ == "__main__":
 
         idle_filename = shutdown_filename.replace("_SHUTDOWN.csv", "_IDLE.csv")
         gap_filename = shutdown_filename.replace("_SHUTDOWN.csv", "_GAP.csv")
-        blocks_filename = shutdown_filename.replace("_SHUTDOWN.csv", "_BLOCKS.csv")        
+        blocks_filename = shutdown_filename.replace("_SHUTDOWN.csv", "_BLOCKS.csv")
+        # the reordered log this segment set came from (processed/<stem>.csv)
+        activity_file = file_path.parent / shutdown_filename.replace("_SHUTDOWN.csv", ".csv")
 
         cmd = [
             sys.executable,
@@ -30,6 +32,7 @@ if __name__ == "__main__":
             str(file_path / gap_filename),
             "60",
             str(file_path / blocks_filename),
+            str(activity_file),
         ]
         print(f"[{index}/{total}] {shutdown_filename}")
         print(" ".join(cmd))

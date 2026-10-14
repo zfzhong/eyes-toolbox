@@ -24,3 +24,12 @@ docs/*.log
 docs/*.out
 docs/*.toc
 docs/*.synctex.gz
+
+# Review databases hold participant data; keep them out of the repo.
+*.sqlite
+
+# Per-participant tables made by the review scripts: participant data, keep out of the repo.
+tools/*.csv
+# LaTeX build artifacts (latexmk).
+docs/*.fdb_latexmk
+docs/*.fls

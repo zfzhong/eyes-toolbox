@@ -52,24 +52,25 @@ def fill_active_blocks(
         blocks: List[EventBlock],
         tolerance_seconds: float = 0.0,
     ) -> List[EventBlock]:
-    
+    """
+    Insert ACTIVE blocks into the uncovered time between non-active blocks.
+
+    Blocks are sorted by start_ts but may overlap (e.g. a short GAP inside a
+    long IDLE), so the uncovered time starts at the latest end_ts seen so far,
+    not at the end of the immediately preceding block.
+    """
     if not blocks: return []
 
     tol = pd.Timedelta(seconds=tolerance_seconds)
-    block_list: List[EventBlock] = []
-    curr = blocks[0]
-    
+    block_list: List[EventBlock] = [blocks[0]]
+    covered_until = blocks[0].end_ts
+
     for b in blocks[1:]:
-        block_list.append(curr)
-
-        new_block = None
-        if b.start_ts - curr.end_ts >= tol:
-            new_block = EventBlock(EventBlock.TYPE_ACTIVE, curr.end_ts, b.start_ts)
-            block_list.append(new_block)   
-
-        curr = b
-    
-    block_list.append(curr)
+        if b.start_ts - covered_until >= tol:
+            block_list.append(EventBlock(EventBlock.TYPE_ACTIVE, covered_until, b.start_ts))
+        block_list.append(b)
+        if b.end_ts > covered_until:
+            covered_until = b.end_ts
 
     return block_list
 

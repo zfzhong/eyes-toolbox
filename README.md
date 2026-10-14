@@ -75,6 +75,7 @@ Available stages:
 - `make shutdown dir=...`
 - `make idle dir=...`
 - `make blocks dir=...`
+- `make sessions dir=...` (app-usage sessions and trigger chains, see "Sessions" in the manual)
 - `make parser dir=...`
 - `make app dir=...`
 - `make nest dir=...`
@@ -102,5 +103,5 @@ python -m eyeslib.usage.visualize_app_usage /path/to/raw/stopped
 ## Notes
 
 - `ACTIVE` is the complement of `SHUTDOWN`, `IDLE`, `GAP`, and `GLANCE`.
-- `GLANCE` captures wake episodes where the screen becomes interactive and returns to non-interactive before a `Keyguard Hidden` event appears.
+- `GLANCE` captures wake sessions (`Screen Interactive` → `Screen Non-interactive`) with no evidence of use: no `Keyguard Hidden` event and less than 5 s of non-system app foreground time. See "Glance Logic" in the manual.
 - The full user manual is in `docs/eyes-manual.pdf`; the LaTeX source is in `docs/eyes-manual.tex`.

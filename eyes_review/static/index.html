@@ -1,0 +1,1478 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EYES Review</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1b; --quiet: #6b6b66; --line: #e2e1dc;
+  --accent: #2f6fd6; --accent-soft: #e6eefb; --warn: #c7771a; --warn-soft: #fbf0e1;
+  --bad: #c43d3d; --good: #2e8a57; --sel: #fff3b0;
+  --active: #e3f1e6; --idle: #3b4a6b; --gap: #bdbdb8; --shutdown: #c43d3d; --glance: #e3b93b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --quiet: #9d9c95; --line: #34332f;
+    --accent: #6d9ff0; --accent-soft: #24324a; --warn: #e3a150; --warn-soft: #3a2d1c;
+    --bad: #e07070; --good: #5cbf86; --sel: #4d4520;
+    --active: #22352a; --idle: #8c9cc4; --gap: #5a5955; --shutdown: #e07070; --glance: #d9b14a;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; height: 100vh; display: flex; flex-direction: column; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  background: var(--bg); color: var(--ink); }
+header { flex: none; display: flex; align-items: center; gap: 24px; padding: 10px 16px; background: var(--panel);
+  border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+header h1 { font-size: 15px; margin: 0; }
+.tabs button { background: none; border: 0; padding: 6px 10px; font: inherit; color: var(--quiet); cursor: pointer;
+  border-bottom: 2px solid transparent; }
+.tabs button.on { color: var(--ink); border-color: var(--accent); font-weight: 600; }
+.stats { display: flex; gap: 18px; color: var(--quiet); flex-wrap: wrap; align-items: center; }
+.stats b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.bar { width: 120px; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; }
+.bar i { display: block; height: 100%; background: var(--good); }
+a { color: var(--accent); }
+main { display: none; flex: 1; min-height: 0; }
+main.on { display: grid; }
+#review { grid-template-columns: minmax(220px, 320px) minmax(0, 1fr); }
+@media (max-width: 1000px) { #review { grid-template-columns: 220px minmax(0, 1fr); } .filters { grid-template-columns: 1fr; } }
+.filters select { min-width: 0; width: 100%; }
+#files { grid-template-columns: 1fr; padding: 16px; gap: 16px; overflow: auto; align-content: start; }
+.side { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
+.filters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 10px; border-bottom: 1px solid var(--line); }
+select, input, textarea { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 4px 6px; }
+.list { overflow: auto; flex: 1; }
+.item { padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; display: grid;
+  grid-template-columns: 1fr auto; gap: 2px 8px; }
+.item:hover { background: var(--bg); }
+.item.cur { background: var(--accent-soft); }
+.item .sub { color: var(--quiet); font-size: 12px; grid-column: 1 / -1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pill { font-size: 11px; padding: 1px 6px; border-radius: 9px; background: var(--line); color: var(--ink); white-space: nowrap; }
+.pill.gap { background: var(--warn-soft); color: var(--warn); }
+.pill.idle { background: var(--accent-soft); color: var(--accent); }
+.pill.long_inferred { background: var(--line); }
+.pill.v-keep { background: var(--good); color: #fff; }
+.pill.v-truncate { background: var(--warn); color: #fff; }
+.pill.v-exclude { background: var(--bad); color: #fff; }
+.pill.car { background: #2a9d8f; color: #fff; }
+.pill.v-log_missing { background: #8a5cc2; color: #fff; }
+label.lm { display: inline-flex; gap: 6px; align-items: center; padding: 5px 10px; border: 1px dashed #8a5cc2; border-radius: 6px; cursor: pointer; }
+.pill.v-unsure { background: var(--quiet); color: #fff; }
+.detail { overflow: auto; padding: 16px 20px 40px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
+.card h2 { font-size: 14px; margin: 0 0 8px; }
+details.card > summary { cursor: pointer; list-style: none; }
+details.card > summary::-webkit-details-marker { display: none; }
+details.card > summary::before { content: "▸"; display: inline-block; width: 1em; color: var(--quiet); transition: transform .15s; }
+details.card[open] > summary::before { transform: rotate(90deg); }
+details.card > summary h2 { margin: 0; }
+.meta { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px 16px; }
+.meta div span { display: block; color: var(--quiet); font-size: 11.5px; }
+.meta div b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.verdict { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button.v { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg);
+  color: var(--ink); cursor: pointer; }
+button.v:hover { border-color: var(--accent); }
+button.v:disabled { opacity: .45; cursor: default; }
+button.v kbd { font-size: 11px; color: var(--quiet); margin-left: 4px; }
+button.v.keep { border-color: var(--good); }
+button.v.exclude { border-color: var(--bad); }
+button.v.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.v.primary kbd { color: #fff; opacity: .8; }
+button.v.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent); font-weight: 600; }
+.pending { padding: 8px 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); margin-top: 10px; }
+.saved { padding: 8px 10px; border-radius: 6px; background: var(--accent-soft); margin-top: 10px; }
+.flash { color: var(--good); font-weight: 600; }
+#note { flex: 1; min-width: 200px; }
+.zoom button { font: inherit; font-size: 12px; background: none; border: 1px solid var(--line); border-radius: 5px;
+  padding: 2px 8px; color: var(--ink); cursor: pointer; }
+.zoom button.on { border-color: var(--accent); color: var(--accent); }
+svg text { fill: var(--quiet); font-size: 11px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--quiet); font-weight: 500; font-size: 12px; position: sticky; top: 0; background: var(--panel); }
+td.num, th.num { text-align: right; }
+.events { max-height: 420px; overflow: auto; }
+tr.out td { color: var(--quiet); }
+tr.hb td { color: var(--quiet); }
+tr.long td { background: var(--warn-soft); }
+tr.selrow td { background: var(--sel); }
+tr.click { cursor: pointer; }
+.small { font-size: 12px; color: var(--quiet); }
+.pkg { color: var(--quiet); font-size: 11.5px; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--quiet); margin-top: 6px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.empty { color: var(--quiet); padding: 40px; text-align: center; }
+.err { color: var(--bad); }
+.filetable { max-height: 45vh; overflow: auto; }
+
+/* ---------- device state review */
+:root { --st-off: #c43d3d; --st-idle: #3b4a6b; --st-active: #2e8a57; --st-oi: #9b6bb3; --st-ia: #5fa8c9;
+  --st-oa: #d08c3a; --st-u3: #c9c8c2; --st-nolog: #8e7cc3; --st-nologoff: #5b4a8a; }
+@media (prefers-color-scheme: dark) {
+  :root { --st-off: #e07070; --st-idle: #8c9cc4; --st-active: #5cbf86; --st-oi: #b892cc; --st-ia: #7cc0dc;
+    --st-oa: #e3a150; --st-u3: #5a5955; --st-nolog: #9d8fd0; --st-nologoff: #7a68b8; }
+}
+#states { grid-template-columns: minmax(240px, 340px) minmax(0, 1fr); }
+@media (max-width: 1000px) { #states { grid-template-columns: 230px minmax(0, 1fr); } }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { font: inherit; font-size: 12px; border: 0; background: var(--bg); color: var(--ink); padding: 3px 10px; cursor: pointer; }
+.seg button.on { background: var(--accent); color: #fff; }
+.sbar { display: flex; height: 8px; border-radius: 3px; overflow: hidden; background: var(--line); margin-top: 3px; grid-column: 1 / -1; }
+.sbar i { display: block; height: 100%; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
+.pill.st-ok { background: var(--good); color: #fff; }
+.pill.st-problem { background: var(--bad); color: #fff; }
+.acto { max-height: 62vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+.acto canvas { display: block; cursor: crosshair; }
+.rulebtns { display: flex; flex-wrap: wrap; gap: 6px; }
+.rulebtns button.v { padding: 4px 9px; }
+.ivinfo { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px 16px; margin-bottom: 10px; }
+.ivinfo div span { display: block; color: var(--quiet); font-size: 11.5px; }
+.rule-desc { font-size: 12px; color: var(--quiet); }
+tr.inside td { background: var(--sel); }
+.evscroll { max-height: 62vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+tr.inblock td { background: var(--accent-soft); }
+tr.mark td { background: var(--accent); color: #fff; font-weight: 600; font-size: 12px; padding: 3px 8px; }
+tr.skip td { text-align: center; color: var(--quiet); font-style: italic; }
+td.biggap { color: var(--warn); font-weight: 600; }
+.loadmore { display: block; width: 100%; font: inherit; font-size: 12px; padding: 5px; border: 0; background: var(--bg);
+  color: var(--accent); cursor: pointer; }
+.loadmore:disabled { color: var(--quiet); cursor: default; }
+.stattbl td, .stattbl th { padding: 3px 10px; }
+.item .dur { font-weight: 600; font-variant-numeric: tabular-nums; }
+.bulk { padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--bg); font-size: 12px;
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.bulk select, .bulk input[type=text] { font-size: 12px; padding: 2px 4px; }
+.bulk input[type=text] { flex: 1; min-width: 90px; }
+.bulk button { font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 5px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--ink); cursor: pointer; }
+.bulk button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.bulk button.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+.bulk button:disabled { opacity: .45; cursor: default; }
+.bulk .warn { color: var(--warn); }
+input.bl-chk { margin: 0 6px 0 0; vertical-align: -2px; cursor: pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1>EYES Review</h1>
+  <nav class="tabs"><button data-tab="review" class="on">Review</button><button data-tab="files">Files</button><button data-tab="states">Device state review</button></nav>
+  <div class="stats" id="stats"></div>
+</header>
+
+<main id="review" class="on">
+  <aside class="side">
+    <div class="filters">
+      <select id="f-reason"><option value="all">All reasons</option><option value="gap">Silence ≥ 3 h</option>
+        <option value="idle">Mostly screen off (IDLE)</option><option value="long_inferred">Long, end not observed</option></select>
+      <select id="f-role"><option value="">Parents and children</option><option value="parent">Parents</option><option value="child">Children</option></select>
+      <select id="f-status"><option value="todo">To review</option><option value="done">Reviewed</option><option value="all">All</option></select>
+      <select id="f-sort"><option value="duration">Longest first</option><option value="silence">Longest quiet stretch first</option><option value="file">By participant</option></select>
+      <div class="small" id="f-file" style="grid-column: 1 / -1; display:none"></div>
+    </div>
+    <div class="small" id="qcount" style="padding: 6px 10px; border-bottom: 1px solid var(--line)"></div>
+    <div class="list" id="queue"></div>
+  </aside>
+  <section class="detail" id="detail"><div class="empty">Pick a session on the left.</div></section>
+</main>
+
+<main id="files">
+  <div class="card"><h2>Files</h2><div class="filetable" id="filetable"></div></div>
+  <div id="filedetail"></div>
+</main>
+
+<main id="states">
+  <aside class="side">
+    <div class="filters">
+      <div style="grid-column: 1 / -1; display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+        <span class="seg" id="st-mode"><button data-m="byfile" class="on">File by file</button><button data-m="blocks">All stretches</button><button data-m="carrev" title="Car-screen sessions with an event missing: confirm or reject">Car sessions</button><button data-m="piprev" title="Small-window and panel periods that are suspicious: end not logged, a long silence inside, or a panel open for minutes">Small windows</button><button data-m="storyrev" title="App-level story breaks: an event that does not follow from the events before it">Story breaks</button><button data-m="appuse" title="Silences counted as app use: the same app is in front before and after">App usage</button><button data-m="files">Day charts</button></span>
+        <span class="seg" id="st-layer"><button data-l="likely" class="on">Likely</button><button data-l="strict">Strict</button></span></div>
+      <select id="bl-label" class="m-blocks"><option value="all">All unsure labels</option><option>Unsure IA</option>
+        <option>Unsure OI</option><option>Unsure OA</option><option>Unsure 3</option></select>
+      <select id="bl-status" class="m-blocks"><option value="todo">To review</option><option value="done">Reviewed</option><option value="all">All</option></select>
+      <select id="bl-role" class="m-blocks"><option value="">Parents and children</option><option value="parent">Parents</option><option value="child">Children</option></select>
+      <select id="bl-reason" class="m-blocks" style="grid-column: 1 / -1"><option value="">All to review</option>
+        <option value="unsure">Unsure</option><option value="conflict">Conflict (an Off sign and an On sign)</option>
+        <option value="long_off_check">Long Off check (6–12 h, screen not off before it)</option>
+        <option value="no_logging">No logging (6 h or more, no shutdown or boot)</option>
+        <option value="continuity_check">Continuity check (continuity only, &gt; 30 min)</option>
+        <option value="app_usage" hidden>Long stretch app usage</option><option value="car_review" hidden>Car sessions to review</option><option value="pip_review" hidden>Small windows to review</option><option value="story_break" hidden>Story breaks</option></select>
+      <select id="bl-len" class="m-blocks"><option value="">Any length</option><option value="3600">≥ 1 hour</option>
+        <option value="21600">≥ 6 hours</option><option value="86400">≥ 24 hours</option><option value="604800">≥ 7 days</option></select>
+      <select id="bl-order" class="m-blocks"><option value="time">Time order</option><option value="len">Longest first</option></select>
+      <select id="rf-sort" style="display:none"><option value="todo">Most left to review first</option><option value="fewest">Fewest left first</option><option value="participant">By participant</option><option value="hours">Most hours first</option></select>
+      <select id="bl-inside" style="display:none"><option value=""></option></select>
+      <select id="st-sort" class="m-files" style="display:none"><option value="participant">By participant</option><option value="unsure">Most unsure first</option>
+        <option value="off">Most Off first</option><option value="days">Longest log first</option></select>
+      <select id="st-status" class="m-files" style="display:none"><option value="all">All files</option><option value="todo">Not reviewed</option>
+        <option value="ok">Looks right</option><option value="problem">Has problems</option></select>
+      <div class="small m-blocks" id="bl-file" style="grid-column: 1 / -1; display:none"></div>
+    </div>
+    <div class="small" id="st-count" style="padding: 6px 10px; border-bottom: 1px solid var(--line)"></div>
+    <div class="bulk m-blocks" id="bl-bulk"></div>
+    <div class="list" id="rf-list" style="display:none"></div>
+    <div class="list" id="bl-list"></div>
+    <div class="list" id="st-list" style="display:none"></div>
+  </aside>
+  <section class="detail" id="st-detail"><div class="empty">Pick a file on the left.</div></section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+async function api(path, opt) {
+  const r = await fetch(path, opt);
+  const j = await r.json();
+  if (j && j.error) throw new Error(j.error);
+  return j;
+}
+const fmts = {};
+function fmt(t, tz, part = "full") {
+  const key = tz + part;
+  const ms = String(Math.round(t * 1000) % 1000).padStart(3, "0");   // event times are logged to the millisecond
+  if (part === "mdt") {           // "2025/10/20 22:45:38.123" (event lists: full timestamp, reviewer 10-10)
+    if (!fmts[key]) fmts[key] = new Intl.DateTimeFormat("en-US", {timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit",
+      day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit"});
+    const p = Object.fromEntries(fmts[key].formatToParts(new Date(Math.round(t * 1000))).map(x => [x.type, x.value]));
+    return `${p.year}/${p.month}/${p.day} ${p.hour}:${p.minute}:${p.second}.${ms}`;
+  }
+  if (part === "time") {          // tooltips on the lanes: "22:45:38.123"
+    if (!fmts[key]) fmts[key] = new Intl.DateTimeFormat("en-US", {timeZone: tz, hourCycle: "h23", hour: "2-digit", minute: "2-digit", second: "2-digit"});
+    const p = Object.fromEntries(fmts[key].formatToParts(new Date(Math.round(t * 1000))).map(x => [x.type, x.value]));
+    return `${p.hour}:${p.minute}:${p.second}.${ms}`;
+  }
+  if (!fmts[key]) {
+    const o = part === "time" ? {hour: "2-digit", minute: "2-digit", second: "2-digit"}
+            : part === "hm" ? {hour: "2-digit", minute: "2-digit"}
+            : part === "day" ? {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"}
+            : {year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit"};
+    fmts[key] = new Intl.DateTimeFormat("en-CA", {timeZone: tz, hour12: false, ...o});
+  }
+  return fmts[key].format(new Date(t * 1000)).replace(",", "");
+}
+function dur(s) {
+  if (s == null) return "";
+  if (s < 60) return s.toFixed(1) + " s";
+  if (s < 3600) return (s / 60).toFixed(1) + " min";
+  return (s / 3600).toFixed(2) + " h";
+}
+const REASON = {gap: "silence ≥ 3 h", idle: "screen off", long_inferred: "long, end inferred"};
+const pills = r => (r || "").split(",").filter(Boolean).map(x => `<span class="pill ${x}">${REASON[x] || x}</span>`).join(" ");
+const VLABEL = {keep: "keep", truncate: "truncate", log_missing: "log missing", exclude: "exclude", unsure: "unsure"};
+const vpill = v => v ? `<span class="pill v-${v}">${VLABEL[v] || v}</span>` : "";
+
+// event kinds, keyed by the canonical name the server sends (eyeslib.core.event_classes)
+const K = {"Activity Resumed": "R", "Activity Paused": "P", "Activity Stopped": "S",
+  "Screen Interactive": "SCR", "Screen Non-interactive": "SCR", "Keyguard Shown": "KG", "Keyguard Hidden": "KG",
+  "Device Shutdown": "PWR", "Device Startup": "PWR", "User Unlocked": "PWR", "User Stopped": "PWR"};
+const kindOf = e => K[e.name] || (e.cls === "usage" ? "U" : e.cls === "state" ? "ST" : "HB");
+const KCOL = {R: "var(--good)", P: "var(--warn)", S: "var(--bad)", SCR: "var(--accent)", KG: "#9a6cc9",
+  PWR: "var(--ink)", U: "#2a9d8f", ST: "var(--quiet)", HB: "var(--gap)"};
+const CLASS_LABEL = {usage: "usage", state: "state", heartbeat: "heartbeat"};
+function evCell(e) {
+  if (e.name === e.interaction_type) return esc(e.name);
+  const raw = e.interaction_type.replace("Unknown importance: ", "code ");
+  return `${esc(e.name)} <span class="pkg">(${esc(raw)})</span>`;
+}
+const APPCOL = ["#4e79a7", "#f28e2b", "#59a14f", "#b07aa1", "#edc948", "#76b7b2", "#ff9da7", "#9c755f"];
+const appColor = (app, sys) => sys ? "var(--gap)" : APPCOL[[...app].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % APPCOL.length];
+const BCOL = {IDLE: "var(--idle)", GAP: "var(--gap)", SHUTDOWN: "var(--shutdown)", GLANCE: "var(--glance)"};
+
+// ---------------- state
+const S = {queue: [], sid: null, data: null, view: null, sel: null, fileFilter: null, summary: null, showHB: true,
+  pending: null, dirty: false, flash: null, chainOpen: true};
+
+async function loadSummary() {
+  const s = await api("/api/summary");
+  S.summary = s;
+  const t = s.total, rev = s.by_role.reduce((a, r) => a + r.reviewed, 0);
+  const pct = t.flagged ? 100 * rev / t.flagged : 0;
+  $("#stats").innerHTML = `
+    <span><b>${t.files}</b> files</span>
+    <span><b>${t.sessions.toLocaleString()}</b> sessions · <b>${Math.round(t.session_h).toLocaleString()}</b> h</span>
+    <span><b>${t.flagged.toLocaleString()}</b> flagged · <b>${Math.round(t.flagged_h).toLocaleString()}</b> h
+      (${s.by_reason.gap} silence, ${s.by_reason.idle} screen off, ${s.by_reason.long_inferred} long)</span>
+    <span>car display (Android Auto): <b>${t.car_sessions.toLocaleString()}</b> sessions · <b>${t.car_h.toFixed(1)}</b> h in ${t.car_files} files</span>
+    <span>reviewed <b>${rev}</b>/${t.flagged} <span class="bar"><i style="width:${pct}%"></i></span>
+      ${s.verdicts.length ? "· " + s.verdicts.map(v => `${VLABEL[v.verdict] || v.verdict} <b>${v.n}</b>`).join(" · ") : ""}</span>
+    <a href="/api/export/sessions.csv">Export CSV</a>`;
+}
+
+async function loadQueue(keepSid) {
+  const p = new URLSearchParams({reason: $("#f-reason").value, role: $("#f-role").value,
+    status: $("#f-status").value, sort: $("#f-sort").value});
+  if (S.fileFilter) p.set("file_id", S.fileFilter.id);
+  S.queue = await api("/api/queue?" + p);
+  $("#qcount").textContent = `${S.queue.length}${S.queue.length === 2000 ? "+" : ""} sessions`;
+  const ff = $("#f-file");
+  ff.style.display = S.fileFilter ? "" : "none";
+  if (S.fileFilter) ff.innerHTML = `Only ${esc(S.fileFilter.name)} · <a href="#" id="clearfile">show all files</a>`;
+  if (S.fileFilter) $("#clearfile").onclick = e => { e.preventDefault(); S.fileFilter = null; loadQueue(); };
+  renderQueue();
+  if (keepSid == null && S.queue.length && !S.sid) openSession(S.queue[0].sid);
+}
+
+function renderQueue() {
+  $("#queue").innerHTML = S.queue.map(q => `
+    <div class="item ${q.sid === S.sid ? "cur" : ""}" data-sid="${q.sid}">
+      <b>${esc(q.participant)} <span class="small">${q.role}</span></b>
+      <span>${vpill(q.verdict)} ${dur(q.duration_s)}</span>
+      <div class="sub">${fmt(q.start, q.tz, "day")} · ${esc(q.folder)} · ${q.display === "car" ? '<span class="pill car">car</span> ' : ""}${pills(q.reasons)} · ${esc(q.first_app)}</div>
+    </div>`).join("") || `<div class="empty">Nothing here.</div>`;
+  const cur = $("#queue .cur");
+  if (cur) cur.scrollIntoView({block: "nearest"});
+}
+
+async function openSession(sid) {
+  S.sid = sid;
+  S.sel = null;
+  renderQueue();
+  try {
+    S.data = await api("/api/session/" + sid);
+  } catch (e) {
+    $("#detail").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+    return;
+  }
+  S.view = S.data.window.slice();
+  const sv = S.data.session;
+  S.sel = ["truncate", "log_missing"].includes(sv.verdict) ? sv.truncate_at : null;
+  S.pending = sv.verdict ? {verdict: sv.verdict, truncate_at: S.sel,
+    choice: S.sel == null ? sv.verdict : near(S.sel, sv.quiet_start) ? "silence" : near(S.sel, sv.last_usage_t) ? "last" : "selected"} : null;
+  S.dirty = false;
+  renderDetail();
+  if (S.flash) { $("#vmsg").innerHTML = `<span class="flash">${S.flash}</span>`; S.flash = null; }
+}
+
+function renderDetail() {
+  const d = S.data, s = d.session, tz = s.tz;
+  const hasSil = s.quiet_start != null && s.quiet_s >= 60 && s.quiet_start > s.start;
+  const hasLast = s.last_usage_t != null && s.last_usage_t > s.start && s.last_usage_t < s.end;
+  $("#detail").innerHTML = `
+  <div class="card">
+    <h2>${esc(s.participant)} <span class="small">${s.role} · ${esc(s.folder)} · session ${s.session_id}</span>
+      &nbsp;${s.display === "car" ? '<span class="pill car">car display</span> ' : ""}${pills(s.reasons)} ${vpill(s.verdict)}</h2>
+    <div class="meta">
+      <div><span>Display</span><b>${s.display === "car" ? "car (Android Auto)" : "phone"}</b></div>
+      <div><span>Start (${esc(tz)})</span><b>${fmt(s.start, tz)}</b></div>
+      <div><span>End</span><b>${fmt(s.end, tz)}</b></div>
+      <div><span>Duration</span><b>${dur(s.duration_s)}</b></div>
+      <div><span>No usage or state event for</span><b>${dur(s.quiet_s)}</b>
+        <span class="small">${s.hb_in_quiet.toLocaleString()} heartbeats in that stretch</span></div>
+      <div><span>No event of any kind for</span><b>${dur(s.longest_silence_s)}</b></div>
+      <div><span>First app event after that silence</span>${s.after_silence_t == null ? "<b>none</b>" :
+        `<b>${s.after_silence_orphan ? '<span style="color:var(--warn)">Paused without a start</span>' : "normal"}</b>
+        <span class="small">${esc(s.after_silence_app || "")} · ${fmt(s.after_silence_t, tz)}${s.after_silence_orphan ? " · boot signature" : ""}${s.after_silence_boot ? " · boot marker logged" : s.after_silence_orphan ? " · no boot marker logged" : ""}</span>`}</div>
+      <div><span>Events inside: usage / state / heartbeat</span><b>${s.n_usage} / ${s.n_state} / ${s.n_heartbeats}</b></div>
+      <div><span>Last usage event</span><b>${s.last_usage_t ? fmt(s.last_usage_t, tz) : "none"}</b></div>
+      <div><span>Screen off (IDLE) inside</span><b>${dur(s.idle_s)}</b></div>
+      <div><span>GAP / shutdown inside</span><b>${dur(s.gap_s)} / ${dur(s.shutdown_s)}</b></div>
+      <div><span>Apps in chain</span><b>${s.n_apps}</b></div>
+      <div><span>How it ended</span><b>${esc(s.end_evidence)}</b></div>
+      <div><span>Links full / inferred</span><b>${s.links_full} / ${s.links_inferred}</b></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="small" style="margin-bottom:6px"><b>1.</b> Choose a verdict (or click an event on the timeline or in the table to cut there)</div>
+    <div class="verdict">
+      <button class="v keep" data-v="keep">Keep as is<kbd>1</kbd></button>
+      <button class="v" data-v="silence" ${hasSil ? "" : "disabled"}>Truncate before quiet stretch${hasSil ? " (" + fmt(s.quiet_start, tz, "time") + ")" : ""}<kbd>2</kbd></button>
+      <button class="v" data-v="last" ${hasLast ? "" : "disabled"}>Truncate at last usage event${hasLast ? " (" + fmt(s.last_usage_t, tz, "time") + ")" : ""}<kbd>3</kbd></button>
+      <button class="v" data-v="selected" disabled id="btn-sel">Truncate at selected event<kbd>4</kbd></button>
+      <button class="v exclude" data-v="exclude">Exclude<kbd>5</kbd></button>
+      <button class="v" data-v="unsure">Unsure<kbd>6</kbd></button>
+      <button class="v" data-v="clear">Clear verdict</button>
+    </div>
+    <div class="verdict" style="margin-top:8px">
+      <label class="lm"><input type="checkbox" id="logmiss" ${s.verdict === "log_missing" ? "checked" : ""}>
+        <b>Log missing</b> <span class="small">the log breaks at the cut point <kbd>m</kbd></span></label>
+    </div>
+    <div class="small" style="margin:12px 0 6px"><b>2.</b> Save</div>
+    <div class="verdict">
+      <input id="note" placeholder="Note (optional)" value="${esc(s.note)}">
+      <button class="v primary" id="save" disabled>Save<kbd>s</kbd></button>
+      <button class="v primary" id="savenext" disabled>Save &amp; next<kbd>Enter</kbd></button>
+    </div>
+    <div class="pending" id="pending"></div>
+    <div id="saved"></div>
+    <div class="small" style="margin-top:6px"><kbd>j</kbd>/<kbd>k</kbd> next / previous session without saving. <span id="vmsg" class="err"></span></div>
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h2 style="margin:0">Timeline</h2>
+      <div class="zoom" id="zoom">
+        <button data-z="all" class="on">Whole session</button><button data-z="start">Start</button>
+        ${hasSil ? '<button data-z="silence">Quiet stretch</button>' : ""}<button data-z="end">End</button>
+      </div>
+    </div>
+    <div id="tl"></div>
+    <div class="legend">
+      <span><i style="background:var(--active)"></i>ACTIVE</span><span><i style="background:var(--idle)"></i>IDLE</span>
+      <span><i style="background:var(--gap)"></i>GAP</span><span><i style="background:var(--shutdown)"></i>SHUTDOWN</span>
+      <span><i style="background:var(--glance)"></i>GLANCE</span>
+      <span>usage &amp; state: <i style="background:${KCOL.R}"></i>resumed <i style="background:${KCOL.P}"></i>paused
+      <i style="background:${KCOL.S}"></i>stopped <i style="background:${KCOL.U}"></i>other usage
+      <i style="background:${KCOL.SCR}"></i>screen <i style="background:${KCOL.KG}"></i>keyguard
+      <i style="background:${KCOL.PWR}"></i>power <i style="background:${KCOL.ST}"></i>other state</span>
+      <span><i style="background:${KCOL.HB}"></i>heartbeat (device on, not necessarily in use)</span>
+    </div>
+  </div>
+  <details class="card" id="chain" ${S.chainOpen ? "open" : ""}><summary><h2 style="display:inline">App chain</h2>
+    <span class="small">${d.apps.length} app${d.apps.length === 1 ? "" : "s"} · click to ${S.chainOpen ? "collapse" : "expand"}</span></summary>
+    <div class="events" style="max-height:260px;margin-top:8px"><table><thead><tr><th>#</th><th>App</th><th>Start</th>
+      <th class="num">Duration</th><th>Ended by</th><th>Link from previous</th></tr></thead><tbody>
+    ${d.apps.map(a => `<tr><td>${a.ord}</td><td>${esc(a.label || a.app)} <span class="pkg">${esc(a.app)}${a.system_app ? " · system" : ""}</span></td>
+      <td style="white-space:nowrap">${fmt(a.start, tz, "mdt")}</td><td class="num">${dur(a.duration_s)}</td><td>${esc(a.end_evidence)}</td><td>${esc(a.link)}</td></tr>`).join("")}
+    </tbody></table></div></details>
+  <div class="card"><h2>Raw events <label class="small" style="float:right;font-weight:400"><input type="checkbox" id="showhb" ${S.showHB ? "checked" : ""}> show heartbeats</label><span class="small">${d.events.length} of ${d.events_total} in the window
+    (${dur(s.start - d.window[0])} before to ${dur(d.window[1] - s.end)} after the session)</span></h2>
+    <div class="events" id="evs"></div></div>
+  ${d.neighbours.length ? `<div class="card"><h2>Other sessions in this window</h2>
+    ${d.neighbours.map(n => `<div class="small">session ${n.session_id}: ${fmt(n.start, tz, "time")}–${fmt(n.end, tz, "time")} · ${esc(n.first_app)}</div>`).join("")}</div>` : ""}`;
+
+  document.querySelectorAll("button.v[data-v]").forEach(b => b.onclick = () => choose(b.dataset.v));
+  $("#save").onclick = () => save(false);
+  $("#savenext").onclick = () => save(true);
+  $("#logmiss").onchange = () => { if (S.pending && S.pending.truncate_at != null) S.pending.verdict = cutVerdict(); S.dirty = true; showPending(); };
+  $("#note").oninput = () => { S.dirty = true; showPending(); };
+  $("#note").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); save(true); } };
+  showSaved();
+  showPending();
+  document.querySelectorAll("#zoom button").forEach(b => b.onclick = () => zoom(b.dataset.z));
+  $("#showhb").onchange = e => { S.showHB = e.target.checked; renderEvents(); };
+  $("#chain").ontoggle = e => { S.chainOpen = e.target.open;
+    e.target.querySelector("summary .small").textContent = `${d.apps.length} app${d.apps.length === 1 ? "" : "s"} · click to ${S.chainOpen ? "collapse" : "expand"}`; };
+  renderEvents();
+  const gapFlag = (s.reasons || "").includes("gap") && hasSil;
+  zoom(gapFlag ? "silence" : "all");
+}
+
+function renderEvents() {
+  const d = S.data, s = d.session, tz = s.tz;
+  let prev = null;
+  const shown = S.showHB ? d.events : d.events.filter(e => e.cls !== "heartbeat");
+  $("#evs").innerHTML = `<table><thead><tr><th>Time</th><th class="num">Since previous shown</th><th>Event</th><th>Class</th><th>App</th></tr></thead><tbody>
+  ${shown.map((e, i) => {
+    const gap = prev == null ? null : e.t - prev; prev = e.t;
+    const out = e.t < s.start || e.t > s.end;
+    const cls = ["click", out ? "out" : "", e.cls === "heartbeat" ? "hb" : "", gap >= 3600 ? "long" : "", S.sel != null && Math.abs(e.t - S.sel) < 1e-3 ? "selrow" : ""].join(" ");
+    const k = kindOf(e);
+    return `<tr class="${cls}" data-t="${e.t}"><td style="white-space:nowrap">${fmt(e.t, tz, "mdt")}</td><td class="num">${gap == null ? "" : dur(gap)}</td>
+      <td><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${KCOL[k] || "var(--gap)"}"></i>
+      ${evCell(e)}</td><td class="small">${CLASS_LABEL[e.cls] || ""}</td><td>${esc(e.label || e.app)} <span class="pkg">${esc(e.app)}</span></td></tr>`;
+  }).join("")}</tbody></table>`;
+  document.querySelectorAll("#evs tr[data-t]").forEach(r => r.onclick = () => select(+r.dataset.t));
+}
+
+function select(t) {
+  const s = S.data.session;
+  S.sel = t;
+  const ok = t > s.start && t <= s.end;
+  if (ok) { S.pending = {choice: "selected", verdict: cutVerdict(), truncate_at: t}; S.dirty = true; }
+  showPending();
+  renderEvents();
+  const row = $("#evs .selrow");
+  if (row) row.scrollIntoView({block: "center"});
+  drawTimeline();
+}
+
+function zoom(z) {
+  const s = S.data.session, span = 15 * 60;
+  document.querySelectorAll("#zoom button").forEach(b => b.classList.toggle("on", b.dataset.z === z));
+  S.view = z === "all" ? S.data.window.slice()
+    : z === "start" ? [s.start - 120, s.start + span]
+    : z === "end" ? [s.end - span, s.end + 120]
+    : [s.quiet_start - span / 2, s.quiet_start + span / 2];
+  drawTimeline();
+}
+
+function niceStep(sec) {
+  const D = 86400, steps = [1, 5, 10, 30, 60, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, D, 2 * D, 7 * D, 14 * D, 30 * D, 91 * D, 182 * D, 365 * D];
+  return steps.find(x => sec / x <= 7) || 365 * D;
+}
+
+function drawTimeline() {
+  const d = S.data, s = d.session, tz = s.tz;
+  const box = $("#tl");
+  const W = Math.max(320, box.clientWidth), L = 72, R = 12;
+  const [v0, v1] = S.view;
+  const X = t => L + (Math.min(Math.max(t, v0), v1) - v0) / (v1 - v0) * (W - L - R);
+  const rowY = {dev: 26, app: 60, ev: 94, hb: 128}, h = 24, top = 18, bot = 156;
+  let g = "";
+  g += `<rect x="${X(s.start)}" y="${top}" width="${Math.max(1, X(s.end) - X(s.start))}" height="${bot - top}" fill="var(--accent-soft)"/>`;
+  g += `<rect x="${L}" y="${rowY.dev}" width="${W - L - R}" height="${h}" fill="var(--active)"/>`;
+  d.blocks.forEach(b => {
+    if (b.end < v0 || b.start > v1) return;
+    g += `<rect x="${X(b.start)}" y="${rowY.dev}" width="${Math.max(1, X(b.end) - X(b.start))}" height="${h}" fill="${BCOL[b.block_type] || "var(--gap)"}"><title>${b.block_type} ${fmt(b.start, tz, "time")}–${fmt(b.end, tz, "time")} (${dur(b.end - b.start)})</title></rect>`;
+  });
+  d.apps.forEach(a => {
+    if (a.end < v0 || a.start > v1) return;
+    g += `<rect x="${X(a.start)}" y="${rowY.app}" width="${Math.max(1.5, X(a.end) - X(a.start))}" height="${h}" rx="2" fill="${appColor(a.app, a.system_app)}" stroke="var(--panel)" stroke-width="0.5"><title>${esc(a.label || a.app)} ${fmt(a.start, tz, "time")}–${fmt(a.end, tz, "time")} (${dur(a.duration_s)}), ended by ${esc(a.end_evidence)}</title></rect>`;
+  });
+  // stretch with no event of any kind (not even a heartbeat): shaded on the heartbeat row
+  if (s.silence_start != null && s.longest_silence_s >= 600 && s.silence_end > v0 && s.silence_start < v1) {
+    g += `<rect x="${X(s.silence_start)}" y="${rowY.hb}" width="${Math.max(1, X(s.silence_end) - X(s.silence_start))}" height="${h}" fill="var(--bad)" fill-opacity="0.15"><title>No event of any kind for ${dur(s.longest_silence_s)}: device asleep, off or not logging</title></rect>`;
+  }
+  d.events.forEach(e => {
+    if (e.t < v0 || e.t > v1) return;
+    const y = e.cls === "heartbeat" ? rowY.hb : rowY.ev;
+    g += `<line x1="${X(e.t)}" x2="${X(e.t)}" y1="${y}" y2="${y + h}" stroke="${KCOL[kindOf(e)]}" stroke-width="1.2"><title>${fmt(e.t, tz, "time")} ${esc(e.name)} (${e.cls}) ${esc(e.label || e.app)}</title></line>`;
+  });
+  // longest stretch with no usage or state event
+  if (s.quiet_start != null && s.quiet_s >= 600 && s.quiet_end > v0 && s.quiet_start < v1) {
+    g += `<rect x="${X(s.quiet_start)}" y="${top}" width="${Math.max(1, X(s.quiet_end) - X(s.quiet_start))}" height="${bot - top}" fill="none" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="4 3"><title>No usage or state event for ${dur(s.quiet_s)}; ${s.hb_in_quiet} heartbeats in it</title></rect>`;
+    g += `<text x="${(Math.max(X(s.quiet_start), L) + Math.min(X(s.quiet_end), W - R)) / 2}" y="14" text-anchor="middle" style="fill:var(--warn)">no usage or state event for ${dur(s.quiet_s)} · ${s.hb_in_quiet.toLocaleString()} heartbeats</text>`;
+  }
+  if (S.sel != null && S.sel >= v0 && S.sel <= v1) {
+    g += `<line x1="${X(S.sel)}" x2="${X(S.sel)}" y1="${top}" y2="${bot}" stroke="var(--bad)" stroke-width="2"/>`;
+  }
+  const step = niceStep(v1 - v0), multiDay = v1 - v0 > 20 * 3600;
+  for (let t = Math.ceil(v0 / step) * step; t <= v1; t += step) {
+    g += `<line x1="${X(t)}" x2="${X(t)}" y1="${bot}" y2="${bot + 5}" stroke="var(--line)"/><text x="${X(t)}" y="${bot + 18}" text-anchor="middle">${fmt(t, tz, multiDay ? "day" : (step < 60 ? "time" : "hm"))}</text>`;
+  }
+  g += `<text x="4" y="${rowY.dev + 16}">Device</text><text x="4" y="${rowY.app + 16}">Apps</text>` +
+       `<text x="4" y="${rowY.ev + 16}">Use, state</text><text x="4" y="${rowY.hb + 16}">Heartbeats</text>`;
+  box.innerHTML = `<svg width="${W}" height="${bot + 24}" style="display:block;cursor:crosshair">${g}</svg>`;
+  box.querySelector("svg").onclick = ev => {
+    const r = ev.currentTarget.getBoundingClientRect();
+    const t = v0 + (ev.clientX - r.left - L) / (W - L - R) * (v1 - v0);
+    // snap to the nearest event: a truncation point should be an observed event
+    let best = null;
+    d.events.forEach(e => { if (best == null || Math.abs(e.t - t) < Math.abs(best - t)) best = e.t; });
+    if (best != null) select(best);
+  };
+}
+
+const near = (a, b) => a != null && b != null && Math.abs(a - b) < 1e-3;
+const cutVerdict = () => $("#logmiss") && $("#logmiss").checked ? "log_missing" : "truncate";
+
+function choose(choice) {
+  const s = S.data.session;
+  if (["silence", "last", "selected"].includes(choice)) {
+    const t = choice === "silence" ? s.quiet_start : choice === "last" ? s.last_usage_t : S.sel;
+    if (t == null || !(t > s.start && t <= s.end)) return;
+    S.sel = t;
+    S.pending = {choice, verdict: cutVerdict(), truncate_at: t};
+  } else {
+    S.pending = {choice, verdict: choice === "clear" ? "" : choice, truncate_at: null};
+    if (choice !== "clear") S.sel = S.sel;   // keep any picked point visible, it is not used
+  }
+  S.dirty = true;
+  showPending();
+  renderEvents();
+  drawTimeline();
+}
+
+function describe(p, s, tz) {
+  if (!p) return "";
+  if (p.verdict === "") return "<b>Clear</b>: remove the saved verdict.";
+  if (p.truncate_at == null) return `${vpill(p.verdict)} ${{keep: "the session stays as it is", exclude: "the session is dropped from the reviewed totals", unsure: "kept as is, marked unsure"}[p.verdict] || ""}.`;
+  const kept = dur(p.truncate_at - s.start);
+  if (p.verdict === "log_missing") {
+    const nxt = S.data.events.find(e => e.t > p.truncate_at + 1e-6);
+    const latest = nxt ? Math.min(nxt.t, s.end) : s.end;
+    return `${vpill("log_missing")} the log breaks after <b>${fmt(p.truncate_at, tz, "time")}</b>: the session ends between
+      <b>${fmt(p.truncate_at, tz, "time")}</b> and <b>${fmt(latest, tz)}</b> (next logged event), i.e. ${kept} to ${dur(latest - s.start)}
+      instead of ${dur(s.duration_s)}.`;
+  }
+  return `${vpill("truncate")} the session ends at <b>${fmt(p.truncate_at, tz, "time")}</b>: ${kept} instead of ${dur(s.duration_s)}.`;
+}
+
+function showPending() {
+  const s = S.data.session, tz = s.tz, p = S.pending;
+  document.querySelectorAll("button.v[data-v]").forEach(b => b.classList.toggle("on", !!p && p.choice === b.dataset.v));
+  const bs = $("#btn-sel"), selOk = S.sel != null && S.sel > s.start && S.sel <= s.end;
+  bs.disabled = !selOk;
+  bs.innerHTML = `Truncate at selected event${S.sel != null ? " (" + fmt(S.sel, tz, "time") + ")" : ""}<kbd>4</kbd>`;
+  const box = $("#pending");
+  box.style.display = p && S.dirty ? "" : "none";
+  box.innerHTML = p && S.dirty ? `<b>Selected, not saved yet:</b> ${describe(p, s, tz)}` : "";
+  $("#save").disabled = $("#savenext").disabled = !(p && S.dirty);
+}
+
+function showSaved() {
+  const s = S.data.session;
+  $("#saved").innerHTML = s.verdict ? `<div class="saved"><b>Saved verdict</b> (${esc(s.reviewer)}, ${esc(s.updated_at)}): ${describe(
+    {verdict: s.verdict, truncate_at: ["truncate", "log_missing"].includes(s.verdict) ? s.truncate_at : null}, s, s.tz)}
+    ${s.verdict === "log_missing" && s.latest_end ? "" : ""}${s.note ? `<br>Note: ${esc(s.note)}` : ""}</div>`
+    : `<div class="small" style="margin-top:8px">No verdict saved for this session yet.</div>`;
+}
+
+async function save(next) {
+  const s = S.data.session, p = S.pending;
+  if (!p || !S.dirty) { if (next) step(1); return; }
+  const body = {sid: s.sid, note: $("#note").value, verdict: p.verdict};
+  if (p.truncate_at != null) body.truncate_at = p.truncate_at;
+  try {
+    await api("/api/verdict", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  } catch (e) { $("#vmsg").textContent = e.message; return; }
+  const i = S.queue.findIndex(q => q.sid === s.sid);
+  if (i >= 0) S.queue[i].verdict = body.verdict || null;
+  loadSummary();
+  const label = body.verdict ? (VLABEL[body.verdict] || body.verdict) : "cleared";
+  if (!next) { S.flash = `Saved: ${label}.`; return openSession(s.sid); }
+  if (body.verdict && $("#f-status").value === "todo" && i >= 0) {
+    S.queue.splice(i, 1);
+    $("#qcount").textContent = `${S.queue.length} sessions`;
+    const nxt = S.queue[Math.min(i, S.queue.length - 1)];
+    S.flash = `Saved the previous session: ${label}.`;
+    if (nxt) return openSession(nxt.sid);
+    S.sid = null; renderQueue(); $("#detail").innerHTML = `<div class="empty">All done in this list.</div>`;
+  } else { S.flash = `Saved the previous session: ${label}.`; step(1); }
+}
+
+function step(n) {
+  const i = S.queue.findIndex(q => q.sid === S.sid);
+  const nxt = S.queue[i + n];
+  if (nxt) openSession(nxt.sid);
+}
+
+document.addEventListener("keydown", e => {
+  if (!$("#review").classList.contains("on") || ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) || !S.data) return;
+  const map = {"1": "keep", "2": "silence", "3": "last", "4": "selected", "5": "exclude", "6": "unsure"};
+  if (map[e.key]) { const b = document.querySelector(`button.v[data-v="${map[e.key]}"]`); if (b && !b.disabled) choose(map[e.key]); }
+  else if (e.key === "m") { const c = $("#logmiss"); if (c) { c.checked = !c.checked; c.onchange(); } }
+  else if (e.key === "s") { e.preventDefault(); save(false); }
+  else if (e.key === "Enter") { e.preventDefault(); save(true); }
+  else if (e.key === "j" || e.key === "ArrowDown") { e.preventDefault(); step(1); }
+  else if (e.key === "k" || e.key === "ArrowUp") { e.preventDefault(); step(-1); }
+});
+$("#queue").onclick = e => { const it = e.target.closest(".item"); if (it) openSession(+it.dataset.sid); };
+["#f-reason", "#f-role", "#f-status", "#f-sort"].forEach(id => $(id).onchange = () => { S.sid = null; loadQueue(); });
+window.addEventListener("resize", () => { if (S.data) drawTimeline(); });
+
+// ---------------- files tab
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+function showTab(t) {
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+  document.querySelectorAll("main").forEach(m => m.classList.toggle("on", m.id === t));
+  if (t === "files") loadFiles();   // always fresh: verdicts change while reviewing
+  if (t === "states") {
+    if (!BL.inited) { BL.inited = true; setMode("byfile"); }
+    else if (BL.mode === "blocks" && BL.byFile && !BL.fileFilter) loadReviewFiles();
+    else if (BL.mode === "blocks") loadBlocks(true).catch(e => $("#bl-list").innerHTML = `<div class="err" style="padding:10px">${esc(e.message)}</div>`);
+    else loadStateFiles();
+  }
+}
+function verdictList(vc) {
+  return (vc || "").split(",").filter(Boolean).map(x => { const [v, n] = x.split(":"); return `${VLABEL[v] || v} ${n}`; }).join(", ");
+}
+function reviewStatus(f) {
+  if (!f.n_flagged) return `<span class="small">none</span>`;
+  const vs = verdictList(f.verdict_counts);
+  const badge = f.n_reviewed >= f.n_flagged ? `<span class="pill v-keep">done</span>`
+    : f.n_reviewed ? `<span class="pill v-truncate">in progress</span>` : `<span class="pill">to review</span>`;
+  return `<span style="white-space:nowrap">${badge} <b>${f.n_reviewed}/${f.n_flagged}</b> reviewed</span>${vs ? `<div class="small">${esc(vs)}</div>` : ""}`;
+}
+async function loadFiles() {
+  const fs = await api("/api/files");
+  $("#filetable").innerHTML = `<table><thead><tr><th>Participant</th><th>Flagged sessions</th><th>Folder</th><th class="num">Days</th>
+    <th class="num">Sessions</th><th class="num">Session h</th><th class="num">Car display h</th><th class="num">GAP h</th></tr></thead><tbody>
+    ${fs.map(f => `<tr class="click" data-id="${f.file_id}"><td style="white-space:nowrap">${esc(f.participant)} <span class="small">${f.role}</span></td>
+      <td>${reviewStatus(f)}</td><td>${esc(f.folder)}</td>
+      <td class="num">${((f.last_t - f.first_t) / 86400).toFixed(1)}</td><td class="num">${f.n_sessions.toLocaleString()}</td>
+      <td class="num">${f.session_h.toFixed(1)}</td><td class="num">${f.car_h ? f.car_h.toFixed(1) : ""}</td><td class="num">${f.gap_h.toFixed(1)}</td></tr>`).join("")}</tbody></table>`;
+  document.querySelectorAll("#filetable tr[data-id]").forEach(r => r.onclick = () => loadFile(+r.dataset.id));
+}
+async function loadFile(id) {
+  const u = await api("/api/file/" + id), f = u.file;
+  const W = 900, H = 180, L = 40, B = 24, n = u.days.length || 1;
+  const max = Math.max(1, ...u.days.map(d => d.hours + (d.car_h || 0)));
+  const bw = (W - L - 10) / n;
+  const Y = h => H - B - h / max * (H - B - 10);
+  let g = "";
+  for (let v = 0; v <= max; v += max > 12 ? 4 : 2) g += `<line x1="${L}" x2="${W - 10}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${v}</text>`;
+  u.days.forEach((d, i) => {
+    const x = L + i * bw + 1, w = Math.max(1, bw - 2), clean = d.hours - d.flagged_h;
+    g += `<rect x="${x}" y="${Y(clean)}" width="${w}" height="${H - B - Y(clean)}" fill="var(--accent)"><title>${d.day}: ${d.hours.toFixed(2)} h (${d.flagged_h.toFixed(2)} h in flagged sessions)</title></rect>`;
+    if (d.flagged_h > 0) g += `<rect x="${x}" y="${Y(d.hours)}" width="${w}" height="${Y(clean) - Y(d.hours)}" fill="var(--warn)"><title>${d.day}: ${d.flagged_h.toFixed(2)} h in flagged sessions</title></rect>`;
+    if (d.car_h > 0) g += `<rect x="${x}" y="${Y(d.hours + d.car_h)}" width="${w}" height="${Y(d.hours) - Y(d.hours + d.car_h)}" fill="#2a9d8f"><title>${d.day}: ${d.car_h.toFixed(2)} h on the car display (not phone screen time)</title></rect>`;
+    if (i % Math.ceil(n / 16) === 0) g += `<text x="${x + w / 2}" y="${H - 8}" text-anchor="middle">${d.day.slice(5)}</text>`;
+  });
+  $("#filedetail").innerHTML = `<div class="card"><h2>${esc(f.participant)} <span class="small">${f.role} · ${esc(f.folder)} · ${esc(f.raw_name)}</span></h2>
+    <div class="small">App time per local day (${esc(f.tz)}), hours. Blue = phone, orange = phone time in sessions flagged for review, green = car display (Android Auto, not phone screen time).
+      <a href="#" id="revfile">Review this file's ${f.n_flagged} flagged sessions</a></div>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;display:block;margin-top:8px">${g}</svg></div>
+    <div class="card"><h2>Top apps</h2><table><thead><tr><th>App</th><th class="num">Phone h</th><th class="num">In flagged sessions</th><th class="num">Car display h</th><th class="num">Days used</th></tr></thead><tbody>
+    ${u.top_apps.map(a => `<tr><td>${esc(a.label || a.app)} <span class="pkg">${esc(a.app)}${a.system_app ? " · system" : ""}</span></td>
+      <td class="num">${a.hours.toFixed(2)}</td><td class="num">${a.flagged_h.toFixed(2)}</td><td class="num">${a.car_h ? a.car_h.toFixed(2) : ""}</td><td class="num">${a.days}</td></tr>`).join("")}
+    </tbody></table></div>`;
+  $("#revfile").onclick = e => { e.preventDefault(); S.fileFilter = {id, name: f.participant + " (" + f.folder + ")"};
+    $("#f-status").value = "all"; S.sid = null; showTab("review"); loadQueue(); };
+  $("#filedetail").scrollIntoView({behavior: "smooth"});
+}
+
+// ---------------- device state review (eyeslib.states.device_state)
+const ST_LABELS = ["Off", "Idle", "Active", "Unsure OI", "Unsure IA", "Unsure OA", "Unsure 3", "No logging", "No logging, likely off"];
+const ST_VAR = {"Off": "--st-off", "Idle": "--st-idle", "Active": "--st-active", "Unsure OI": "--st-oi",
+  "Unsure IA": "--st-ia", "Unsure OA": "--st-oa", "Unsure 3": "--st-u3", "No logging": "--st-nolog", "No logging, likely off": "--st-nologoff"};
+const stCol = l => `var(${ST_VAR[l]})`;
+const stHex = l => getComputedStyle(document.documentElement).getPropertyValue(ST_VAR[l]).trim();
+const RULE_DESC = {
+  screen_on: "Screen on, closed by a logged screen off",
+  screen_on_active: "Screen on, screen-off not logged; before the last usage event of the run",
+  screen_on_tail: "Screen on, screen-off not logged; after the last usage event (it went off somewhere here, or the person kept watching)",
+  screen_off: "Screen off, closed by a screen on, boot or shutdown",
+  screen_on_same_app: "Screen on, no event for more than 30 min, but the same app is resumed before and paused after: it stayed in front with the screen on",
+  screen_on_end_lost: "Screen on and in use, then a silence of more than 30 minutes ending with the screen off: the use ended somewhere inside, unlogged; no screen time is granted",
+  background_only: "Screen state not logged, but only background events for 5 minutes or more since the last sign of use: the screen is off",
+  screen_off_until_use: "Screen off, the next screen-on was not logged, but no sign of use yet: the screen is still off",
+  screen_on_tail_idle: "Screen-off not logged, but only background events for 5 minutes or more since the last sign of use: the screen is off",
+  screen_off_lost_on: "Screen off, then another screen off: the screen-on was not logged",
+  screen_unknown: "Screen state unknown: start of the log, or after a boot/shutdown until the next screen event",
+  shutdown_before: "Device Shutdown right before this silence",
+  startup_after: "Device Startup right after this silence",
+  shutdown_startup: "Device Shutdown before and Device Startup after this silence",
+  unlocked_after: "User Unlocked right after this silence (a boot whose Startup was not logged)",
+  system_pausefirst_after: "A system app paused without having started, right after this silence (boot sign)",
+  screen_on_long_silence: "Screen logged on, but no event for more than 30 min: the screen-off was most likely lost",
+  app_continuity: "The same user app on both sides of the silence (paused…resumed, or resumed…paused): the device stayed on",
+  boot_signature: "The events right after the silence match this device's boot signature (the background events seen at its confirmed boots)",
+  long_quiet: "Silence of 2 days or more with no power marker: No logging, likely off (reviewer, 2026-10-08: the log was lost; in reality such a silence is the phone powered off)",
+  normal_unlock: "The next unlock after the silence is an ordinary one (no User Unlocked, which Android writes at the first unlock after a boot): no boot happened",
+  shutdown_unclean_before: "Unclean Device Shutdown before this silence (nothing closed at the shutdown, as after a forced restart): Android stamps it at its last save and loses what came after, so the phone was on for an unknown part of the silence",
+  shutdown_unclean_startup: "Unclean Device Shutdown before and a boot after this silence: off for part of it, on with lost events for the rest",
+  no_logging: "Silence of 6 hours or more (under 2 days) with no shutdown or boot marker: not a power-off (boots log a marker); the log was lost and the state cannot be told",
+};
+const SIGN_NAME = {shutdown_startup: "shutdown + startup", shutdown_before: "shutdown before", startup_after: "startup after",
+  unlocked_after: "User Unlocked after", boot_signature: "boot signature", long_quiet: "2 days or more", no_logging: "no logging", system_pausefirst_after: "system app pausing first",
+  normal_unlock: "normal unlock after", app_continuity: "continuity (same user app)", shutdown_unclean_before: "unclean shutdown before",
+  shutdown_unclean_startup: "unclean shutdown + boot"};
+const signName = x => (x || "").split(" vs ").map(y => SIGN_NAME[y] || y).join(" vs ");
+const REASON_NAME = {unsure: "unsure", conflict: "conflict", long_off_check: "long Off: check", no_logging: "no logging", continuity_check: "continuity: check", app_usage: "app usage", car_review: "car session", pip_review: "small window", story_break: "story break"};
+const ST = {layer: "likely", files: [], fid: null, file: null, strip: {}, win: null, span: 6 * 3600, center: null,
+  sel: null, pick: null, reviewPick: null, showHB: false};
+const post = (url, body) => api(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+
+async function loadStateFiles() {
+  ST.files = await api("/api/states/files");
+  renderStateList();
+}
+const fileHours = (f, layer) => { const h = f.hours[layer] || {}; return ST_LABELS.map(l => h[l] || 0); };
+function renderStateList() {
+  const L = ST.layer, sortBy = $("#st-sort").value, stf = $("#st-status").value;
+  const tot = f => fileHours(f, L).reduce((a, b) => a + b, 0) || 1;
+  const unsure = f => { const h = fileHours(f, L); return (h[3] + h[4] + h[5] + h[6]) / tot(f); };
+  let fs = ST.files.filter(f => stf === "all" || (stf === "todo" ? !f.status : f.status === stf));
+  if (sortBy === "unsure") fs.sort((a, b) => unsure(b) - unsure(a));
+  else if (sortBy === "off") fs.sort((a, b) => fileHours(b, L)[0] / tot(b) - fileHours(a, L)[0] / tot(a));
+  else if (sortBy === "days") fs.sort((a, b) => (b.last_t - b.first_t) - (a.last_t - a.first_t));
+  $("#st-count").textContent = `${fs.length} files shown · ${ST.files.filter(f => f.status).length} of ${ST.files.length} reviewed`;
+  $("#st-list").innerHTML = fs.map(f => {
+    const h = fileHours(f, L), T = tot(f);
+    return `<div class="item ${f.file_id === ST.fid ? "cur" : ""}" data-id="${f.file_id}">
+      <div><b>${esc(f.participant)}</b> <span class="small">${f.role}</span></div>
+      <div>${f.status ? `<span class="pill st-${f.status}">${f.status === "ok" ? "looks right" : "has problems"}</span>` : ""}</div>
+      <div class="sub">${esc(f.folder)} · ${((f.last_t - f.first_t) / 86400).toFixed(0)} days · unsure ${(100 * unsure(f)).toFixed(0)}%${f.n_rulings ? ` · ${f.n_rulings} rulings` : ""}</div>
+      <div class="sbar">${h.map((x, i) => x > 0 ? `<i style="width:${100 * x / T}%;background:${stCol(ST_LABELS[i])}" title="${ST_LABELS[i]} ${x.toFixed(1)} h"></i>` : "").join("")}</div>
+    </div>`;
+  }).join("");
+}
+
+async function openStateFile(id) {
+  Object.assign(ST, {fid: id, win: null, sel: null, pick: null, strip: {}});
+  renderStateList();
+  $("#st-detail").innerHTML = `<div class="empty">Loading…</div>`;
+  ST.file = await api("/api/states/file/" + id);
+  renderStateFile();
+  await drawActogram();
+}
+
+function renderStateFile() {
+  const d = ST.file, f = d.file, tz = f.tz, rev = d.review || {};
+  const tot = {strict: {}, likely: {}};
+  d.days.forEach(x => tot[x.layer][x.label] = (tot[x.layer][x.label] || 0) + x.hours);
+  const sum = L => ST_LABELS.reduce((a, l) => a + (tot[L][l] || 0), 0) || 1;
+  const cell = (L, l) => `<td class="num">${(tot[L][l] || 0).toFixed(1)}</td><td class="num">${(100 * (tot[L][l] || 0) / sum(L)).toFixed(1)}</td>`;
+  ST.reviewPick = rev.status || null;
+  $("#st-detail").innerHTML = `
+  <div class="card"><h2>${esc(f.participant)} <span class="small">${f.role} · ${esc(f.folder)} · ${esc(f.raw_name)}</span></h2>
+    <div class="small">${fmt(f.first_t, tz)} → ${fmt(f.last_t, tz)} (${esc(tz)}) · ${((f.last_t - f.first_t) / 86400).toFixed(1)} days</div>
+    <table style="margin-top:8px;max-width:640px"><thead><tr><th>State</th><th class="num">Strict h</th><th class="num">%</th>
+      <th class="num">Likely h</th><th class="num">%</th></tr></thead><tbody>
+      ${ST_LABELS.map(l => `<tr><td><span class="sw" style="background:${stCol(l)}"></span>${l}</td>${cell("strict", l)}${cell("likely", l)}</tr>`).join("")}
+    </tbody></table>
+    <details style="margin-top:8px"><summary class="small" style="cursor:pointer">Hours by rule (${ST.layer} layer)</summary>
+      <table style="max-width:860px"><thead><tr><th>Rule</th><th>State</th><th class="num">Hours</th><th class="num">Intervals</th></tr></thead><tbody>
+      ${d.rules.filter(r => r.layer === ST.layer).map(r => `<tr><td>${esc(r.rule)}<div class="rule-desc">${esc(RULE_DESC[r.rule] || "")}</div></td>
+        <td><span class="sw" style="background:${stCol(r.label)}"></span>${r.label}</td><td class="num">${r.hours.toFixed(1)}</td>
+        <td class="num">${r.n.toLocaleString()}</td></tr>`).join("")}
+      </tbody></table></details>
+    <div class="verdict" style="margin-top:10px"><span class="small">This file's device states:</span>
+      <button class="v keep ${rev.status === "ok" ? "on" : ""}" data-s="ok">Looks right</button>
+      <button class="v exclude ${rev.status === "problem" ? "on" : ""}" data-s="problem">Has problems</button>
+      <input id="st-note" placeholder="Note (optional)" value="${esc(rev.note)}">
+      <button class="v primary" id="st-save">Save</button>
+      ${rev.status ? `<a href="#" id="st-clear" class="small">clear review</a>` : ""}<span id="st-msg" class="small"></span></div>
+  </div>
+  <div class="card"><h2>Days <span class="small">${ST.layer} layer, local time · click a moment to inspect it</span></h2>
+    <div class="legend">${ST_LABELS.map(l => `<span><i style="background:${stCol(l)}"></i>${l}</span>`).join("")}
+      <span>· black underline = your rulings · blue box = window below</span></div>
+    <div class="acto" id="acto" style="margin-top:8px"><canvas id="acto-c"></canvas></div>
+  </div>
+  <div id="st-win"></div>`;
+  $("#st-note").style.cssText = "flex:1;min-width:200px";
+  document.querySelectorAll("#st-detail button[data-s]").forEach(b => b.onclick = () => {
+    ST.reviewPick = b.dataset.s;
+    document.querySelectorAll("#st-detail button[data-s]").forEach(x => x.classList.toggle("on", x === b));
+  });
+  $("#st-save").onclick = () => saveStateReview(ST.reviewPick);
+  if ($("#st-clear")) $("#st-clear").onclick = e => { e.preventDefault(); saveStateReview(""); };
+}
+
+async function saveStateReview(status) {
+  if (status === null) { $("#st-msg").textContent = "Choose Looks right or Has problems first."; return; }
+  const note = $("#st-note").value;
+  await post("/api/states/review", {file_id: ST.fid, status, note});
+  const f = ST.files.find(x => x.file_id === ST.fid);
+  if (f) { f.status = status || null; f.note = note; }
+  ST.file.review = status ? {status, note} : null;
+  renderStateList();
+  if (!status) { renderStateFile(); drawActogram(); if (ST.win) refreshWindow(); return; }
+  $("#st-msg").innerHTML = `<span class="flash">Saved</span>`;
+}
+
+function stripIndex(s, t) {             // last segment starting at or before t
+  let lo = 0, hi = s.t0.length - 1, r = -1;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (s.t0[m] <= t) { r = m; lo = m + 1; } else hi = m - 1; }
+  return r;
+}
+
+async function drawActogram() {
+  const L = ST.layer;
+  if (!ST.strip[L]) ST.strip[L] = await api(`/api/states/strip/${ST.fid}?layer=${L}`);
+  const s = ST.strip[L], days = ST.file.day_edges, tz = ST.file.file.tz;
+  const box = $("#acto"), cv = $("#acto-c");
+  if (!cv) return;
+  const W = box.clientWidth - 2, LBL = 78, R = 8, RH = 14, TOP = 18, pw = W - LBL - R;
+  const H = TOP + days.length * RH + 4, dpr = window.devicePixelRatio || 1;
+  cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + "px"; cv.style.height = H + "px";
+  const c = cv.getContext("2d"), cs = getComputedStyle(document.documentElement), css = v => cs.getPropertyValue(v).trim();
+  c.scale(dpr, dpr);
+  c.fillStyle = css("--panel"); c.fillRect(0, 0, W, H);
+  c.font = "11px -apple-system, BlinkMacSystemFont, sans-serif";
+  c.fillStyle = css("--quiet");
+  for (let h = 0; h <= 24; h += 3) c.fillText(String(h).padStart(2, "0"), LBL + pw * h / 24 - 6, 12);
+  const col = ST_LABELS.map(stHex), WD = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+  let j = 0;
+  days.forEach(([day, a, b], i) => {
+    const y = TOP + i * RH, span = b - a;
+    c.fillStyle = css("--quiet");
+    c.fillText(`${day.slice(5)} ${WD[new Date(day + "T12:00:00Z").getUTCDay()]}`, 4, y + 11);
+    while (j < s.t1.length && s.t1[j] <= a) j++;
+    for (let k = j; k < s.t0.length && s.t0[k] < b; k++) {
+      const x0 = LBL + pw * Math.max(0, s.t0[k] - a) / span, x1 = LBL + pw * Math.min(span, s.t1[k] - a) / span;
+      c.fillStyle = col[s.lab[k]];
+      c.fillRect(x0, y + 1, Math.max(0.6, x1 - x0), RH - 4);
+    }
+  });
+  const mark = (t0, t1, fn) => days.forEach(([, a, b], i) => {
+    if (t1 > a && t0 < b) fn(LBL + pw * Math.max(0, t0 - a) / (b - a), LBL + pw * Math.min(b - a, t1 - a) / (b - a), TOP + i * RH);
+  });
+  c.fillStyle = css("--ink");
+  ST.file.rulings.forEach(r => mark(r.start, r.end, (x0, x1, y) => c.fillRect(x0, y + RH - 3, Math.max(1.5, x1 - x0), 2)));
+  if (ST.win) {
+    c.strokeStyle = css("--accent"); c.lineWidth = 1.5;
+    mark(ST.win.window[0], ST.win.window[1], (x0, x1, y) => c.strokeRect(x0, y + 0.5, Math.max(2, x1 - x0), RH - 2));
+  }
+  const at = e => {
+    const r = cv.getBoundingClientRect(), x = e.clientX - r.left, i = Math.floor((e.clientY - r.top - TOP) / RH);
+    if (i < 0 || i >= days.length || x < LBL) return null;
+    const [, a, b] = days[i];
+    return a + (b - a) * Math.min(1, Math.max(0, (x - LBL) / pw));
+  };
+  cv.onclick = e => { const t = at(e); if (t != null) openWindow(t); };
+  cv.onmousemove = e => {
+    const t = at(e); if (t == null) { cv.title = ""; return; }
+    const k = stripIndex(s, t);
+    cv.title = `${fmt(t, tz)} · ${k >= 0 && t < s.t1[k] ? ST_LABELS[s.lab[k]] : "outside the log"} (click to inspect)`;
+  };
+}
+
+const SPANS = [[86400, "24 h"], [6 * 3600, "6 h"], [3600, "1 h"], [600, "10 min"], [60, "1 min"]];
+async function openWindow(center, span) {
+  ST.center = center;
+  if (span) ST.span = span;
+  const t0 = center - ST.span / 2, t1 = center + ST.span / 2;
+  if (!ST.win) $("#st-win").innerHTML = `<div class="card"><div class="empty">Loading…</div></div>`;
+  const keepSel = ST.sel;
+  ST.win = await api(`/api/states/window/${ST.fid}?t0=${t0}&t1=${t1}`);
+  ST.sel = keepSel && ST.win.intervals.find(iv => Math.abs(iv.start - keepSel.start) < 1e-3) || null;
+  refreshWindow();
+  drawActogram();
+  $("#st-win").scrollIntoView({behavior: "smooth", block: "start"});
+}
+
+function refreshWindow() {
+  const w = ST.win, tz = w.file.tz;
+  $("#st-win").innerHTML = `
+  <div class="card"><h2>${fmt(w.window[0], tz)} → ${fmt(w.window[1], tz)}
+      <span class="small">${w.intervals_total.toLocaleString()} intervals · ${w.events_total.toLocaleString()} events${w.events_total > w.events.length ? ` (first ${w.events.length} shown)` : ""}</span></h2>
+    <div class="zoom" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <button id="w-prev">◀ earlier <kbd>[</kbd></button>${SPANS.map(([s, l]) => `<button data-span="${s}" class="${s === ST.span ? "on" : ""}">${l}</button>`).join("")}
+      <button id="w-next">later <kbd>]</kbd> ▶</button><span class="small">Click an interval on the Strict or Likely row (or an event below) to inspect and rule it.</span></div>
+    <div id="w-tl" style="margin-top:8px"></div>
+    <div class="legend">${ST_LABELS.map(l => `<span><i style="background:${stCol(l)}"></i>${l}</span>`).join("")}
+      <span>· event ticks: <i style="background:var(--good)"></i>resumed <i style="background:var(--warn)"></i>paused <i style="background:var(--accent)"></i>screen <i style="background:var(--ink)"></i>power <i style="background:var(--gap)"></i>heartbeat</span></div>
+  </div>
+  <div class="card" id="w-iv"></div>
+  <div class="card"><h2>Raw events <label class="small" style="float:right;font-weight:400"><input type="checkbox" id="w-hb" ${ST.showHB ? "checked" : ""}> show heartbeats</label></h2>
+    <div class="events" id="w-evs"></div></div>`;
+  $("#w-prev").onclick = () => openWindow(ST.center - ST.span * 0.75);
+  $("#w-next").onclick = () => openWindow(ST.center + ST.span * 0.75);
+  document.querySelectorAll("#st-win button[data-span]").forEach(b => b.onclick = () =>
+    openWindow(ST.sel && ST.sel.duration_s < +b.dataset.span ? (ST.sel.start + ST.sel.end) / 2 : ST.center, +b.dataset.span));
+  $("#w-hb").onchange = e => { ST.showHB = e.target.checked; renderWinEvents(); };
+  drawWindow();
+  renderIntervalCard();
+  renderWinEvents();
+}
+
+function drawWindow() {
+  const w = ST.win, tz = w.file.tz, [w0, w1] = w.window;
+  const W = Math.max(300, $("#w-tl").clientWidth), L = 52, R = 8, H = 150;
+  const X = t => L + (Math.min(Math.max(t, w0), w1) - w0) / (w1 - w0) * (W - L - R);
+  const Y = {strict: 18, likely: 44, ruling: 70, events: 90};
+  let g = "";
+  const step = niceStep(w1 - w0);
+  for (let t = Math.ceil(w0 / step) * step; t <= w1; t += step)
+    g += `<line x1="${X(t)}" x2="${X(t)}" y1="14" y2="${H - 20}" stroke="var(--line)"/><text x="${X(t)}" y="${H - 6}" text-anchor="middle">${fmt(t, tz, step >= 3600 ? "hm" : "time")}</text>`;
+  g += `<text x="4" y="${Y.strict + 14}">Strict</text><text x="4" y="${Y.likely + 14}">Likely</text>
+    <text x="4" y="${Y.ruling + 10}">Ruling</text><text x="4" y="${Y.events + 16}">Events</text>`;
+  w.intervals.forEach((iv, k) => {
+    const x0 = X(iv.start), wd = Math.max(0.7, X(iv.end) - x0);
+    for (const ly of ["strict", "likely"])
+      g += `<rect data-k="${k}" x="${x0}" y="${Y[ly]}" width="${wd}" height="20" fill="${stCol(iv[ly])}" style="cursor:pointer"><title>${iv[ly]} · ${iv["rule_" + ly]} · ${dur(iv.duration_s)}</title></rect>`;
+  });
+  w.rulings.forEach(r => g += `<rect x="${X(r.start)}" y="${Y.ruling}" width="${Math.max(1.5, X(r.end) - X(r.start))}" height="12" fill="${stCol(r.label)}" stroke="var(--ink)" stroke-width="0.8"><title>Ruled ${r.label}${r.note ? ": " + esc(r.note) : ""}</title></rect>`);
+  w.events.forEach(e => {
+    const k = kindOf(e), hb = k === "HB";
+    g += `<line x1="${X(e.t)}" x2="${X(e.t)}" y1="${Y.events + (hb ? 14 : 0)}" y2="${Y.events + 26}" stroke="${KCOL[k]}" stroke-width="${hb ? 0.7 : 1.3}"/>`;
+  });
+  if (ST.sel) g += `<rect x="${X(ST.sel.start) - 1}" y="${Y.strict - 3}" width="${Math.max(3, X(ST.sel.end) - X(ST.sel.start) + 2)}" height="${Y.ruling + 16 - Y.strict}" fill="none" stroke="var(--accent)" stroke-width="2"/>`;
+  $("#w-tl").innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block">${g}</svg>`;
+  $("#w-tl svg").onclick = e => { const k = e.target.dataset ? e.target.dataset.k : undefined; if (k !== undefined) selectInterval(+k); };
+}
+
+function savedRuling(iv) { return iv && ST.win.rulings.find(r => Math.abs(r.start - iv.start) < 1e-3) || null; }
+function selectInterval(k) {
+  ST.sel = ST.win.intervals[k];
+  const ex = savedRuling(ST.sel);
+  ST.pick = ex ? ex.label : null;
+  drawWindow(); renderIntervalCard(); renderWinEvents();
+}
+function renderIntervalCard() {
+  const iv = ST.sel, tz = ST.win.file.tz;
+  if (!iv) { $("#w-iv").innerHTML = `<div class="small">No interval selected.</div>`; return; }
+  const ex = savedRuling(iv);
+  const lay = ly => `<div><span>${ly === "strict" ? "Strict" : "Likely"}</span><b><span class="sw" style="background:${stCol(iv[ly])}"></span>${iv[ly]}</b>
+    <div class="rule-desc">${esc(iv["rule_" + ly])}: ${esc(RULE_DESC[iv["rule_" + ly]] || "")}</div></div>`;
+  $("#w-iv").innerHTML = `<h2>Selected interval</h2>
+    <div class="ivinfo">
+      <div><span>From</span><b>${fmt(iv.start, tz, "mdt")}</b></div><div><span>To</span><b>${fmt(iv.end, tz, "mdt")}</b></div>
+      <div><span>Duration</span><b>${dur(iv.duration_s)}</b></div><div><span>Longest silence inside</span><b>${dur(iv.longest_silence_s)}</b></div>
+      <div><span>Events (both ends included)</span><b>${iv.n_events}</b></div>${lay("strict")}${lay("likely")}</div>
+    <div class="small" style="margin-bottom:6px">Your ruling for this interval${ex ? ` (saved: <b>${ex.label}</b>)` : ""}:</div>
+    <div class="rulebtns">${ST_LABELS.map((l, i) => `<button class="v ${ST.pick === l ? "on" : ""}" data-l="${l}"><span class="sw" style="background:${stCol(l)}"></span>${l}<kbd>${i + 1}</kbd></button>`).join("")}</div>
+    <div class="verdict" style="margin-top:8px"><input id="iv-note" placeholder="Note (optional)" value="${esc(ex ? ex.note : "")}" style="flex:1;min-width:200px">
+      <button class="v primary" id="iv-save">Save ruling<kbd>s</kbd></button>${ex ? `<button class="v" id="iv-del">Remove ruling</button>` : ""}<span id="iv-msg" class="small"></span></div>`;
+  document.querySelectorAll("#w-iv button[data-l]").forEach(b => b.onclick = () => pickRuling(b.dataset.l));
+  $("#iv-save").onclick = () => saveRuling(false);
+  if ($("#iv-del")) $("#iv-del").onclick = () => saveRuling(true);
+}
+function pickRuling(l) {
+  ST.pick = l;
+  document.querySelectorAll("#w-iv button[data-l]").forEach(b => b.classList.toggle("on", b.dataset.l === l));
+}
+async function saveRuling(del) {
+  const iv = ST.sel;
+  if (!iv) return;
+  if (!del && !ST.pick) { $("#iv-msg").textContent = "Choose a state first."; return; }
+  const label = del ? "" : ST.pick, note = del ? "" : $("#iv-note").value;
+  await post("/api/states/ruling", {file_id: ST.fid, start: iv.start, end: iv.end, label, note});
+  const upd = list => { const out = list.filter(r => Math.abs(r.start - iv.start) >= 1e-3); if (label) out.push({start: iv.start, end: iv.end, label, note}); return out.sort((a, b) => a.start - b.start); };
+  ST.win.rulings = upd(ST.win.rulings);
+  ST.file.rulings = upd(ST.file.rulings);
+  const f = ST.files.find(x => x.file_id === ST.fid);
+  if (f) f.n_rulings = ST.file.rulings.length;
+  drawWindow(); renderIntervalCard(); drawActogram(); renderStateList();
+  $("#iv-msg").innerHTML = `<span class="flash">${label ? "Saved" : "Removed"}</span>`;
+}
+
+function renderWinEvents() {
+  const w = ST.win, tz = w.file.tz, sel = ST.sel;
+  const inside = e => sel && e.t >= sel.start && e.t <= sel.end;
+  const evs = w.events.filter(e => ST.showHB || e.cls !== "heartbeat" || inside(e));
+  let prev = null;
+  $("#w-evs").innerHTML = `<table><thead><tr><th>Time</th><th class="num">Since previous shown</th><th>Event</th><th>Class</th><th>App</th></tr></thead><tbody>
+    ${evs.map(e => { const gap = prev == null ? "" : dur(e.t - prev); prev = e.t;
+      return `<tr class="click ${inside(e) ? "inside" : ""} ${e.cls === "heartbeat" ? "hb" : ""}" data-t="${e.t}">
+        <td style="white-space:nowrap">${fmt(e.t, tz, "mdt")}</td><td class="num">${gap}</td><td>${evCell(e)}</td><td>${e.cls}</td>
+        <td>${esc(e.label || e.app)} <span class="pkg">${esc(e.app)}</span></td></tr>`; }).join("")}
+    </tbody></table>`;
+  document.querySelectorAll("#w-evs tr[data-t]").forEach(r => r.onclick = () => {
+    const t = +r.dataset.t, k = ST.win.intervals.findIndex(iv => iv.start <= t && t < iv.end);
+    if (k >= 0) selectInterval(k);
+  });
+  const first = document.querySelector("#w-evs tr.inside");
+  if (first) { const box = $("#w-evs"); box.scrollTop = first.offsetTop - box.clientHeight / 3; }
+}
+
+// ---------------- device state review: unsure blocks, longest first
+const BL = {mode: "blocks", inited: false, list: [], total: 0, cur: null, data: null, events: [], pick: null,
+  fileFilter: null, summary: null, showHB: true};
+const isUns = l => !!l && l.startsWith("Unsure");
+const unsLabel = b => isUns(b.label) ? b.label : "Unsure 3";   // what "still unsure" stores
+const BL_CHOICES = [["Off", "Off"], ["Idle", "Idle"], ["Active", "Active"], ["No logging", "No logging"], ["unsure", "Still unsure"]];
+const CAR_CHOICES = [["Car session", "Car session"], ["Not a car session", "Not a car session"], ["Car unsure", "Still unsure"]];
+// what an item on a review list is: its own name and number (quiet stretches keep the stretch number)
+const itemName = b => b.reason === "story_break" ? `story break #${b.block_no - 200000}` : b.reason === "pip_review" ? `small-window period #${b.block_no - 100000}`
+  : b.reason === "car_review" ? `car session #${b.block_no}` : `quiet stretch #${b.block_no}`;
+const STORY_BREAK_TEXT = {resume_no_pause_of_front: "an app was Resumed, but the app in front was not Paused", pause_not_in_front: "an app was Paused, but it was not in front", resume_twice: "an app was Resumed again while already in front", stop_not_paused_front: "an app was Stopped while in front, without a Paused", stop_unknown: "an app was Stopped, but it was neither in front nor Paused", conflict_C1: "device state conflict: an app came to the front on the phone while the screen was logged off, and was still in front at the next screen-on", conflict_C2: "device state conflict: the screen went off, but the app in front on the phone was not Paused"};
+const PIP_CHOICES = [["Small window", "Small window"], ["Covered by a panel", "Covered by a panel"], ["Not visible", "Not visible"], ["PiP unsure", "Still unsure"]];
+const STORY_CHOICES = [["Lost event", "Lost event"], ["Two apps in front", "Two apps in front"], ["Car projection", "Car projection"], ["Screen / lock", "Screen / lock"], ["New story", "New story (note)"], ["Log error", "Log error"], ["Story unsure", "Still unsure"]];
+const blChoices = () => BL.data && BL.data.block.reason === "car_review" ? CAR_CHOICES : BL.data && BL.data.block.reason === "pip_review" ? PIP_CHOICES : BL.data && BL.data.block.reason === "story_break" ? STORY_CHOICES : BL_CHOICES;
+const BL_STEP = 300;
+
+// "File by file": pick a file, then review its stretches (time order). BL.byFile with no file chosen shows the file list.
+function setMode(m) {
+  if (m === "byfile" || m === "all" || m === "appuse" || m === "carrev" || m === "piprev" || m === "storyrev") {
+    BL.appUse = m === "appuse"; BL.carRev = m === "carrev"; BL.pipRev = m === "piprev"; BL.storyRev = m === "storyrev";
+    $("#bl-reason").value = BL.appUse ? "app_usage" : BL.carRev ? "car_review" : BL.pipRev ? "pip_review" : BL.storyRev ? "story_break" : "";
+    $("#bl-status").value = BL.appUse ? "all" : "todo"; $("#bl-label").value = "all"; }
+  if (m === "byfile") { BL.byFile = true; BL.fileFilter = null; m = "blocks"; }
+  else if (m === "appuse" || m === "carrev" || m === "piprev") { BL.byFile = false; BL.fileFilter = null; $("#bl-order").value = "len"; m = "blocks"; }
+  else if (m === "storyrev") { BL.byFile = false; BL.fileFilter = null; $("#bl-order").value = "time"; m = "blocks"; }
+  else if (m === "all") { BL.byFile = false; BL.fileFilter = null; $("#bl-order").value = "len"; m = "blocks"; }
+  BL.mode = m;
+  const pickFile = m === "blocks" && BL.byFile && !BL.fileFilter;
+  document.querySelectorAll("#st-mode button").forEach(x => x.classList.toggle("on",
+    x.dataset.m === (m === "files" ? "files" : BL.byFile ? "byfile" : BL.appUse ? "appuse" : BL.carRev ? "carrev" : BL.pipRev ? "piprev" : BL.storyRev ? "storyrev" : "blocks")));
+  document.querySelectorAll("#states .m-blocks").forEach(x => x.style.display = m === "blocks" && !pickFile ? "" : "none");
+  $("#rf-list").style.display = pickFile ? "" : "none";
+  $("#rf-sort").style.display = pickFile ? "" : "none";
+  $("#bl-role").style.display = m === "blocks" ? "" : "none";
+  if (pickFile) {
+    document.querySelectorAll("#states .m-files").forEach(x => x.style.display = "none");
+    $("#bl-file").style.display = "none"; $("#bl-list").style.display = "none"; $("#st-list").style.display = "none";
+    BL.cur = null; loadReviewFiles(); loadBlockSummary();
+    return;
+  }
+  document.querySelectorAll("#states .m-files").forEach(x => x.style.display = m === "files" ? "" : "none");
+  $("#bl-file").style.display = m === "blocks" && BL.fileFilter ? "" : "none";
+  $("#bl-list").style.display = m === "blocks" ? "" : "none";
+  $("#st-list").style.display = m === "files" ? "" : "none";
+  if (m === "blocks") { BL.cur = null; loadBlocks(); loadBlockSummary(); }
+  else { ST.fid = null; $("#st-detail").innerHTML = `<div class="empty">Pick a file on the left.</div>`; loadStateFiles(); }
+}
+
+async function loadReviewFiles() {
+  BL.rfiles = await api("/api/states/review_files?" + new URLSearchParams({layer: ST.layer, role: $("#bl-role").value}));
+  renderReviewFiles();
+}
+function renderReviewFiles() {
+  const by = $("#rf-sort").value, fs = [...(BL.rfiles || [])];
+  if (by === "todo") fs.sort((a, b) => (b.n - b.ruled) - (a.n - a.ruled));
+  else if (by === "fewest") fs.sort((a, b) => (a.n - a.ruled) - (b.n - b.ruled) || a.n - b.n);
+  else if (by === "hours") fs.sort((a, b) => b.hours - a.hours);
+  const left = fs.reduce((a, f) => a + f.n - f.ruled, 0), done = fs.filter(f => f.n === f.ruled).length;
+  $("#st-count").textContent = `${fs.length} files with stretches to review · ${left.toLocaleString()} stretches left · ${done} files fully ruled`;
+  $("#rf-list").innerHTML = fs.map(f => `<div class="item" data-id="${f.file_id}" data-name="${esc(f.participant)} (${esc(f.folder)})">
+      <div><b>${esc(f.participant)}</b> <span class="small">${f.role}</span></div>
+      <div class="dur">${f.n - f.ruled ? (f.n - f.ruled) + " left" : "done"}</div>
+      <div class="sub">${esc(f.folder)} · ${f.ruled} of ${f.n} ruled · ${f.hours.toFixed(0)} h${f.status ? ` · <span class="pill st-${f.status}">${f.status === "ok" ? "looks right" : "has problems"}</span>` : ""}</div>
+      <div class="sbar"><i style="width:${100 * f.ruled / f.n}%;background:var(--accent)"></i></div>
+    </div>`).join("") || `<div class="empty">Nothing to review in this layer.</div>`;
+}
+function openReviewFile(id, name) {
+  BL.fileFilter = {id, name}; $("#bl-order").value = "time"; $("#bl-status").value = "all";
+  setMode("blocks");
+}
+async function loadBlocks(keep) {
+  const q = new URLSearchParams({layer: ST.layer, label: $("#bl-label").value, status: $("#bl-status").value,
+    role: $("#bl-role").value, limit: 2000, order: $("#bl-order").value});
+  if (BL.fileFilter) q.set("file_id", BL.fileFilter.id);
+  if ($("#bl-len").value) q.set("min_s", $("#bl-len").value);
+  if ($("#bl-reason").value) q.set("reason", $("#bl-reason").value);
+  if ($("#bl-inside").value) q.set("inside", $("#bl-inside").value);
+  const r = await api("/api/states/blocks?" + q);
+  BL.list = r.blocks; BL.total = r.total;
+  const shown = new Set(BL.list.map(b => b.block_id));
+  BL.selected = new Set([...(BL.selected || [])].filter(id => shown.has(id)));   // keep only what is still listed
+  BL.confirm = false;
+  const ff = $("#bl-file");
+  ff.style.display = BL.fileFilter ? "" : "none";
+  if (BL.fileFilter) {
+    ff.innerHTML = `<a href="#" id="bl-clearfile">‹ ${BL.byFile ? "All files" : "show all files"}</a> · <b>${esc(BL.fileFilter.name)}</b> · ${BL.list.filter(b => b.ruling).length} of ${BL.list.length} shown are ruled`;
+    $("#bl-clearfile").onclick = e => { e.preventDefault(); BL.fileFilter = null;
+      if (BL.byFile) return setMode("byfile"); loadBlocks(true); loadBlockSummary(); };
+  }
+  renderBlockList();
+  if (!keep) { BL.cur = null; renderBlockSummary(); }
+}
+
+function renderBlockList() {
+  $("#st-count").textContent = `${BL.total.toLocaleString()} ${BL.appUse ? "silences counted as app use (same app in front before and after)" : BL.carRev ? "car-screen sessions with an event missing" : BL.pipRev ? "small-window and panel periods to review" : BL.storyRev ? "story breaks (events that do not follow from the ones before)" : "quiet stretches"}, ${$("#bl-order").value === "time" ? "in time order" : "longest first"}` +
+    (BL.list.length < BL.total ? ` (first ${BL.list.length} shown)` : "") + " · each a gap with no event, ≥ 5 min";
+  $("#bl-list").innerHTML = BL.list.map(b => `<div class="item ${b.block_id === BL.cur ? "cur" : ""}" data-id="${b.block_id}">
+      <div><input type="checkbox" class="bl-chk" data-id="${b.block_id}" ${BL.selected && BL.selected.has(b.block_id) ? "checked" : ""}><b>${esc(b.participant)}</b> <span class="small">${b.role} · ${itemName(b)}</span></div><div class="dur">${dur(b.duration_s)}</div>
+      <div class="sub">${fmt(b.start, b.tz)} → ${fmt(b.end, b.tz, "mdt")}</div>
+      <div class="sub"><span class="sw" style="background:${stCol(b.label)}"></span>${b.label}${b.reason && b.reason !== "unsure" ? ` · <b>${REASON_NAME[b.reason] || b.reason}</b>` : ""}${b.app ? ` · <span class="pkg">${esc(b.app)}</span>` : ""} · ${esc(b.folder)}${b.ruling ? ` · ruled <b>${esc(isUns(b.ruling) ? "still unsure" : b.ruling)}</b>` : ""}</div>
+    </div>`).join("") || `<div class="empty">No blocks.</div>`;
+  renderBulk();
+}
+
+// ---- quick action: one ruling for many blocks (still the reviewer's decision, two clicks)
+const BULK_CHOICES = [["Off", "Off"], ["Idle", "Idle"], ["Active", "Active"], ["still_unsure", "Still unsure"], ["", "Remove ruling"]];
+function renderBulk() {
+  const sel = BL.list.filter(b => BL.selected.has(b.block_id));
+  const n = sel.length, h = sel.reduce((a, b) => a + b.duration_s, 0) / 3600;
+  const withEv = sel.filter(b => b.n_events > 2).length;
+  const all = BL.list.length && n === BL.list.length;
+  const choice = BL.bulkChoice ?? "Off", name = (BULK_CHOICES.find(c => c[0] === choice) || [])[1];
+  $("#bl-bulk").innerHTML = `<label><input type="checkbox" id="bl-all" ${all ? "checked" : ""}> select all shown (${BL.list.length.toLocaleString()})</label>
+    <span><b>${n.toLocaleString()}</b> selected${n ? ` · ${h.toFixed(0)} h` : ""}${withEv ? ` · <span class="warn">${withEv} with events inside</span>` : ""}</span>
+    ${n ? (BL.confirm
+      ? `<span style="flex-basis:100%">${withEv && choice === "Off" ? `<span class="warn">${withEv} of these have events inside: the device logged something during them.</span> ` : ""}
+           Rule <b>${n.toLocaleString()}</b> blocks (${h.toFixed(0)} h) as <b>${esc(name)}</b>?</span>
+         <button class="danger" id="bl-bconfirm">Confirm</button><button id="bl-bcancel">Cancel</button>`
+      : `<select id="bl-bchoice">${BULK_CHOICES.map(([v, l]) => `<option value="${v}" ${v === choice ? "selected" : ""}>${l}</option>`).join("")}</select>
+         <input type="text" id="bl-bnote" placeholder="Note" value="${esc(BL.bulkNote || "")}">
+         <button class="primary" id="bl-bapply">Apply…</button>`) : ""}
+    <span id="bl-bmsg"></span>`;
+  $("#bl-all").onchange = e => {
+    BL.selected = e.target.checked ? new Set(BL.list.map(b => b.block_id)) : new Set();
+    BL.confirm = false; renderBlockList();
+  };
+  if ($("#bl-bchoice")) $("#bl-bchoice").onchange = e => { BL.bulkChoice = e.target.value; };
+  if ($("#bl-bnote")) $("#bl-bnote").oninput = e => { BL.bulkNote = e.target.value; };
+  if ($("#bl-bapply")) $("#bl-bapply").onclick = () => { BL.bulkChoice = $("#bl-bchoice").value; BL.confirm = true; renderBulk(); };
+  if ($("#bl-bcancel")) $("#bl-bcancel").onclick = () => { BL.confirm = false; renderBulk(); };
+  if ($("#bl-bconfirm")) $("#bl-bconfirm").onclick = applyBulk;
+}
+async function applyBulk() {
+  const ids = [...BL.selected], label = BL.bulkChoice ?? "Off";
+  $("#bl-bconfirm").disabled = true;
+  const r = await post("/api/states/rulings_bulk", {block_ids: ids, label, note: BL.bulkNote || ""});
+  BL.selected = new Set(); BL.confirm = false;
+  await loadBlocks(true);
+  loadBlockSummary();
+  $("#bl-bmsg").innerHTML = `<span class="flash">${label ? "Ruled" : "Cleared"} ${r.n.toLocaleString()} blocks</span>`;
+}
+
+async function loadBlockSummary() {
+  BL.summary = await api("/api/states/summary" + (BL.fileFilter ? `?file_id=${BL.fileFilter.id}` : ""));
+  if (!BL.cur && BL.mode === "blocks") renderBlockSummary();
+}
+
+function renderBlockSummary() {
+  const s = BL.summary;
+  if (!s) return;
+  const by = (L, l) => s.counts.find(x => x.layer === L && x.label === l) || {n: 0, hours: 0};
+  const CONF = ["Off", "Idle", "Active"], UNS = ["Unsure OI", "Unsure IA", "Unsure OA", "Unsure 3"];
+  const table = L => {
+    const sum = (ls, k) => ls.reduce((a, l) => a + by(L, l)[k], 0);
+    const N = sum(ST_LABELS, "n") || 1, H = sum(ST_LABELS, "hours") || 1;
+    const cells = (n, h, b) => { const w = x => b ? `<b>${x}</b>` : x;
+      return `<td class="num">${w(n.toLocaleString())}</td><td class="num">${w((100 * n / N).toFixed(1))}</td><td class="num">${w(h.toFixed(0))}</td><td class="num">${w((100 * h / H).toFixed(1))}</td>`; };
+    const row = l => `<tr><td style="padding-left:22px"><span class="sw" style="background:${stCol(l)}"></span>${l}</td>${cells(by(L, l).n, by(L, l).hours)}</tr>`;
+    const tot = (name, ls) => `<tr><td><b>${name}</b></td>${cells(sum(ls, "n"), sum(ls, "hours"), true)}</tr>`;
+    const lst = s.listed.find(x => x.layer === L) || {n: 0, reviewed: 0, hours: 0};
+    const ruled = s.ruled.filter(x => x.layer === L);
+    return `<div class="card"><h2>${L === "likely" ? "Likely" : "Strict"} layer <span class="small">${N.toLocaleString()} blocks · ${H.toFixed(0)} h</span></h2>
+      <table class="stattbl" style="max-width:600px"><thead><tr><th>Blocks</th><th class="num">Count</th><th class="num">%</th><th class="num">Hours</th><th class="num">%</th></tr></thead>
+      <tbody>${tot("Confirmed", CONF)}${CONF.map(row).join("")}${tot("Unsure", UNS)}${UNS.map(row).join("")}</tbody></table>
+      <div class="small" style="margin-top:6px">Review list: ${lst.n.toLocaleString()} quiet stretches (${(lst.hours || 0).toFixed(0)} h), each a gap with no event, ≥ 5 min${lst.n_check ? `; of them ${lst.n_check.toLocaleString()} continuity checks` : ""}${lst.n_conflict ? `, ${lst.n_conflict.toLocaleString()} conflicts` : ""}${lst.n_long ? `, ${lst.n_long.toLocaleString()} long On checks` : ""} · reviewed <b>${(lst.reviewed || 0).toLocaleString()}</b>
+      ${ruled.length ? `<br>Your rulings: ${ruled.map(x => `${esc(UNS.includes(x.label) ? "still unsure" : x.label)} ${x.n} (${x.hours.toFixed(1)} h)`).join(" · ")}` : ""}</div></div>`;
+  };
+  const step1 = () => {
+    const g = s.signs || [];
+    if (!g.length) return "";
+    const N = g.reduce((a, x) => a + x.n, 0) || 1, H = g.reduce((a, x) => a + x.hours, 0) || 1;
+    const V = ["Off", "On", "Conflict", "Unsure"];
+    const row = (name, n, h, bold, pad) => `<tr><td style="${pad ? "padding-left:22px" : ""}">${bold ? `<b>${name}</b>` : name}</td>
+      <td class="num">${bold ? `<b>${n.toLocaleString()}</b>` : n.toLocaleString()}</td><td class="num">${(100 * n / N).toFixed(2)}</td>
+      <td class="num">${bold ? `<b>${h.toFixed(0)}</b>` : h.toFixed(0)}</td><td class="num">${(100 * h / H).toFixed(1)}</td></tr>`;
+    const sig = (s.signatures || []).map(x => `${x.files} files: ${x.signature === "device" ? "their own" : x.signature === "pooled" ? "the pooled one" : "none"}`).join(" · ");
+    return `<div class="card"><h2>Step 1: was the device Off or On? <span class="small">${N.toLocaleString()} quiet stretches ≥ 5 min · ${H.toFixed(0)} h</span></h2>
+      <table class="stattbl" style="max-width:640px"><thead><tr><th>Verdict and the sign that decided it</th><th class="num">Stretches</th><th class="num">%</th><th class="num">Hours</th><th class="num">%</th></tr></thead><tbody>
+      ${V.map(v => { const x = g.filter(y => y.verdict === v); if (!x.length) return "";
+        return row(v, x.reduce((a, y) => a + y.n, 0), x.reduce((a, y) => a + y.hours, 0), true)
+          + (v === "Unsure" ? "" : x.map(y => row(esc(signName(y.how)), y.n, y.hours, false, true)).join("")); }).join("")}
+      </tbody></table><div class="small" style="margin-top:6px">Boot signature used: ${sig}</div></div>`;
+  };
+  $("#st-detail").innerHTML = `<div class="small" style="margin-bottom:10px">Device-state blocks ${BL.fileFilter ? "for <b>" + esc(BL.fileFilter.name) + "</b>" : "in all files"}.
+    A block is a stretch of time with one label (it can contain events). What you review are the <b>quiet stretches</b>:
+    gaps between two consecutive events, with no event at all, of 5 minutes or more, whose state is still unsure. Pick one on the left (longest first).</div>`
+    + step1() + table(ST.layer) + table(ST.layer === "likely" ? "strict" : "likely");
+}
+
+async function openBlock(id) {
+  BL.cur = id;
+  renderBlockList();
+  $("#st-detail").innerHTML = `<div class="empty">Loading events…</div>`;
+  const d = await api(`/api/states/block/${id}?context=150`);
+  BL.data = d;
+  BL.pick = d.block.ruling || null;
+  BL.events = d.parts.flatMap((p, k) => k ? [{skip: true, from: d.parts[k - 1][d.parts[k - 1].length - 1].i, to: p[0].i}, ...p] : p);
+  $("#st-detail").innerHTML = `<div class="card" id="bl-head"></div>
+    <div class="card"><h2>Segment profile <span class="small">three tracks from the events: silences, key events, apps in front · the stretch is outlined</span>
+      <span class="seg" style="float:right" id="pf-zoom"><button data-z="0.5">Zoom in</button><button data-z="2">Zoom out</button><button data-z="0">Reset</button></span></h2>
+      <div id="pf-lanes"></div></div>
+    <div class="card"><h2>Events <span class="small">the quiet stretch lies between the two blue rows · ${d.n_events_total.toLocaleString()} events in this file</span>
+      <label class="small" style="float:right;font-weight:400"><input type="checkbox" id="bl-hb" ${BL.showHB ? "checked" : ""}> show heartbeats</label></h2>
+      <div class="small" style="margin-bottom:6px"><a href="#" id="bl-jump">jump to the quiet stretch</a><a href="#" id="bl-jumpend"></a>
+        · the longest gap shown is in <span style="color:var(--warn);font-weight:600">orange</span></div>
+      <div class="evscroll" id="bl-evs"></div></div>`;
+  $("#bl-hb").onchange = e => { BL.showHB = e.target.checked; renderBlockEvents(); scrollToMark("#bl-start"); };
+  $("#bl-jump").onclick = e => { e.preventDefault(); scrollToMark("#bl-start"); };
+  $("#bl-jumpend").onclick = e => { e.preventDefault(); scrollToMark("#bl-end"); };
+  renderBlockHead();
+  renderBlockEvents();
+  scrollToMark("#bl-start");
+  PF.pad = null; drawProfile();
+  document.querySelectorAll("#pf-zoom button").forEach(x => x.onclick = () => { const z = +x.dataset.z;
+    PF.pad = z ? Math.max(300, PF.pad * z) : null; drawProfile(); });
+}
+
+// ---- segment profile: the three tracks of a file around the open stretch
+const PF = {pad: null};
+const PF_LANES_ALL = [["silence", "Silence"], ["power", "Power"], ["screen", "Screen"], ["lock", "Lock"], ["heartbeat", "Background"], ["service", "Service"], ["car", "Car screen"], ["chain", "App chain"], ["app", "App in front"], ["pip", "Small window"]];
+const PF_COL = {silence: "#9aa0a6", off: "var(--st-off)", storm: "#d9480f", screen_on: "var(--st-active)", screen_off: "var(--st-idle)",
+  screen_unknown: "#c9c9c9", unlocked: "#7fb77e", locked: "#b9b2a3", heartbeat: "#8fa8c8"};
+const appHue = a => { let h = 0; for (const c of a) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+async function drawProfile() {
+  const b = BL.data.block, el = $("#pf-lanes");
+  if (PF.pad == null) PF.pad = Math.max(1800, b.duration_s * 0.5);
+  const t0 = b.start - PF.pad, t1 = b.end + PF.pad, id = BL.cur;
+  const d = await api(`/api/states/profile/${b.file_id}?t0=${t0}&t1=${t1}`);
+  if (id !== BL.cur || !$("#pf-lanes")) return;
+  if (d.missing) { el.innerHTML = `<div class="small">No profile for this file yet (run eyeslib.runners.run_profiles).</div>`; return; }
+  const PF_LANES = PF_LANES_ALL;
+  const W = Math.max(600, el.clientWidth || 900), L = 100, R = 10, lh = 22, top = 6, H = top + PF_LANES.length * lh + 22;
+  const X = t => L + (Math.min(Math.max(t, t0), t1) - t0) / (t1 - t0) * (W - L - R);
+  const y = k => top + k * lh, lane = Object.fromEntries(PF_LANES.map(([k], i) => [k, i]));
+  const tip = (s, extra) => `${extra} · ${fmt(s.start, b.tz, "mdt")} → ${fmt(s.end, b.tz, "mdt")} · ${dur(s.end - s.start)}`;
+  let g = PF_LANES.map(([k, name], i) => `<text x="4" y="${y(i) + 14}" font-size="11" fill="var(--muted, #666)">${name}</text>
+    <line x1="${L}" x2="${W - R}" y1="${y(i) + lh - 2}" y2="${y(i) + lh - 2}" stroke="var(--line)" stroke-width="0.5"/>`).join("");
+  const bar = (s, k, col, label, o = {}) => { const x0 = X(s.start), w = Math.max(o.min || 1, X(s.end) - x0);
+    return `<rect x="${x0}" y="${y(k) + 3}" width="${w}" height="${lh - 8}" fill="${col}" ${o.dash ? `stroke="#b00" stroke-dasharray="3 2"` : ""}><title>${esc(tip(s, label))}</title></rect>`; };
+  const mark = (s, k, col, label) => `<path d="M${X(s.start)} ${y(k) + 2} v${lh - 6}" stroke="${col}" stroke-width="2"><title>${esc(label + " · " + fmt(s.start, b.tz, "mdt"))}</title></path>`;
+  for (const s of d.profile) {
+    if (s.kind === "silence") g += bar(s, lane.silence, PF_COL.silence, "silence");
+    else if (s.kind === "off") g += bar(s, lane.power, PF_COL.off, "Off (" + signName(s.flag) + ")");
+    else if (s.kind === "storm") g += bar(s, lane.power, PF_COL.storm, `boot storm, ${s.n} standby changes`, {min: 3});
+    else if (["shutdown", "startup", "user_unlocked"].includes(s.kind)) g += mark(s, lane.power, s.kind === "shutdown" ? "#000" : "#0a7", {shutdown: "Device Shutdown", startup: "Device Startup", user_unlocked: "User Unlocked"}[s.kind]);
+    else if (s.kind.startsWith("screen_")) g += bar(s, lane.screen, PF_COL[s.kind], s.kind.replace("_", " ") + (s.flag ? " (" + s.flag + ")" : ""), {dash: !!s.flag});
+    else if (s.kind === "unlocked" || s.kind === "locked") g += bar(s, lane.lock, PF_COL[s.kind], s.kind);
+    else if (s.kind === "heartbeat") g += bar(s, lane.heartbeat, PF_COL.heartbeat, `${s.n} background events`);
+    else if (s.kind === "car") g += bar(s, lane.car, "#d8c7ef", "car session (Android Auto service)" + (s.grade ? " · " + s.grade : ""));
+    else if (s.kind === "visible") g += bar(s, lane.pip, "#c9cdd2", `still visible, cause unknown: ${s.app}, ${dur(s.end - s.start)} (not an app that has a small window)`, {min: 2, dash: true});
+    else if (s.kind === "cover") g += bar(s, lane.pip, `hsl(${appHue(s.app)} 30% 75%)`, `covered by a panel: ${s.app}, ${dur(s.end - s.start)}, with ${s.flag} over it` + (s.grade ? " · " + s.grade : ""), {min: 2, dash: true});
+    else if (s.kind.startsWith("pip")) g += bar(s, lane.pip, `hsl(${appHue(s.app)} 55% 55%)`, `small window: ${s.app}, ${dur(s.end - s.start)}, ${s.kind === "pip_wake" ? "came back when the screen was turned on" : "opened by leaving the app"}, ${s.kind === "pip_back" ? "ended by returning to the app" : s.kind === "pip" ? "ended by closing it or by the screen going off" : "until its next Stopped or Resumed"}` + (s.flag === "cut at screen-off" ? ", cut at a screen-off (its end was not logged)" : s.flag === "near the file's Stopped delay" ? ", short enough to be a slow Stopped in this file" : s.flag ? `, with ${s.flag} in front` : "") + (s.grade ? " · " + s.grade : "") + (+s.n ? " · inside a car session" : ""), {min: 2});
+    else if (s.kind === "service") g += bar(s, lane.service, s.flag === "clean" ? `hsl(${appHue(s.app)} 45% 60%)` : s.flag === "review" ? "#f3d9a4" : "#f1c7c7",
+      `service: ${s.app} (${s.flag === "clean" ? "no long silence inside" : s.flag === "review" ? "a silence of 30 min to 6 h inside: check" : "stop lost: shutdown or silence of 6 h or more inside"})` + (+s.n ? " · inside a car session" : ""), {dash: s.flag !== "clean"});
+    else if (s.kind === "service_mark") { if (t1 - t0 <= 6 * 3600) g += mark(s, lane.service, "#b00", s.app + ": service " + s.flag); }
+    else if (s.kind === "car_incomplete") g += bar(s, lane.car, "#f1e9fb", "car session? " + s.flag, {dash: true, min: 3});
+    else if (s.kind === "car_maps") g += bar(s, lane.car, "#7b4fc4", "Maps on the car screen (Maps service)");
+  }
+  for (const s of d.chain || []) g += bar(s, lane.chain, "#5b6b7f", `chain of ${s.n_nodes} app${s.n_nodes > 1 ? "s in a row" : ""}: ${s.path}` +
+      (s.start_logged === "False" || s.start_logged === false ? " · start not logged" : "") + (s.end_logged === "False" || s.end_logged === false ? " · end not logged" : ""),
+    {dash: !(String(s.start_logged) === "True" || s.start_logged === true) || !(String(s.end_logged) === "True" || s.end_logged === true)});
+  for (const s of d.app) g += s.flag === "no start" ? mark(s, lane.app, "#b00", s.app + " paused with no start")
+    : bar(s, lane.app, `hsl(${appHue(s.app)} 55% 55%)`, s.app + (s.flag ? " (" + s.flag + ")" : ""), {dash: s.flag === "no pause"});
+  g += `<rect x="${X(b.start)}" y="${top}" width="${Math.max(2, X(b.end) - X(b.start))}" height="${PF_LANES.length * lh}" fill="none" stroke="var(--accent)" stroke-width="1.5"/>`;
+  for (let i = 0; i <= 4; i++) { const t = t0 + (t1 - t0) * i / 4;
+    g += `<text x="${X(t)}" y="${H - 6}" font-size="10" text-anchor="${i === 0 ? "start" : i === 4 ? "end" : "middle"}" fill="var(--muted, #666)">${fmt(t, b.tz, "mdt")}</text>`; }
+  el.innerHTML = `<svg width="${W}" height="${H}" style="display:block;max-width:100%">${g}</svg>
+    <div class="small">Small window: an app paused but not stopped for 10 s or more while another app is in front (picture-in-picture). Service: a foreground service of an app from start to stop, at least 1 min (dashed: a long silence inside; red tick: start or stop with no partner, shown when zoomed to 6 h or less). App chain: user apps handing over to each other within 1 s (dashed: an end was not logged). Car screen: Android Auto session (light) with Maps projected (dark). Power: shutdown, startup, User Unlocked, boot storm and the Off stretch between them. Dashed red outline: the closing event was lost. Red tick in the app lane: a pause with no start. Hover a segment for details.</div>`;
+}
+
+function renderBlockHead() {
+  const d = BL.data, b = d.block, tz = b.tz;
+  const why = (b.rules || "").split("; ").filter(Boolean).map(x => { const r = x.split(" ")[0];
+    return `<div>${esc(x)}: ${esc(RULE_DESC[r] || "")}</div>`; }).join("");
+  const picked = v => v === "unsure" ? isUns(BL.pick) : BL.pick === v;
+  $("#bl-head").innerHTML = `<h2>${esc(b.participant)} <span class="small">${b.role} · ${esc(b.folder)} · ${b.layer} layer · ${itemName(b)}</span>
+      ${b.ruling ? `<span class="pill v-keep">ruled ${esc(isUns(b.ruling) ? "still unsure" : b.ruling)}</span>` : ""}</h2>
+    <div class="ivinfo">
+      <div><span>Label</span><b><span class="sw" style="background:${stCol(b.label)}"></span>${b.label}</b></div>
+      <div><span>Start (${esc(tz)})</span><b>${fmt(b.start, tz)}</b></div><div><span>End</span><b>${fmt(b.end, tz)}</b></div>
+      <div><span>Duration</span><b>${dur(b.duration_s)}</b></div>
+      <div><span>Last event before</span><b>${esc(b.left_event || "")}</b> <span class="pkg">${esc(b.left_app || "")}</span></div>
+      <div><span>First event after</span><b>${esc(b.right_event || "")}</b> <span class="pkg">${esc(b.right_app || "")}</span></div>
+      <div><span>State before / after</span><b>${esc(d.before_label || "start of log")} / ${esc(d.after_label || "end of log")}</b></div>
+    </div>
+    <div class="ivinfo">
+      <div><span>Off sign</span><b>${b.off_sign ? esc(signName(b.off_sign)) : "none"}</b></div>
+      <div><span>On sign</span><b>${b.on_sign ? esc(signName(b.on_sign)) : "none"}</b></div>
+      <div><span>Boot signature score</span><b>${b.boot_score == null ? "n/a" : b.boot_score.toFixed(2)}</b></div>
+    </div>
+    <div class="rule-desc" style="margin-bottom:10px">${{
+      conflict: `<b>Why it is here:</b> an Off sign (${esc(signName(b.off_sign))}) and an On sign (${esc(signName(b.on_sign))}) on the same stretch.`,
+      no_logging: `<b>Why it is here:</b> <b>${b.label}</b>: a silence of 6 hours or more with no shutdown and no boot in or after it. Boots almost always log a marker, so this is not a logged power-off; the log was lost. Under 2 days it is "No logging", from 2 days on "No logging, likely off". Look at the events on both sides for what really happened.`,
+      long_off_check: `<b>Why it is here:</b> ruled Off because it is a silence of 6 hours or more, but the screen was not logged off when it began. If the device was in use for part of it, that screen time is lost. Check the events before it.`,
+      car_review: `<b>Car-screen session to review:</b> ${esc(b.app || "")}. A confirmed session starts and ends with the foreground service of both Android Auto and Maps; here part of that is missing, so it is not counted. The span shown runs between the events that exist. Check the service events of Android Auto and Maps around it.`,
+      story_break: (() => { const [k, c, f] = (b.rules || "").split("|"); return `<b>Story break:</b> ${esc(STORY_BREAK_TEXT[k] || k)}. App <span class="pkg">${esc(b.app || "")}</span>; in front before: <span class="pkg">${esc(f || "none")}</span>. Context: <b>${esc(c || "")}</b>. Look at the App in front lane around this moment: which event is missing, or which story explains it (car projection, two apps in front, screen / lock, a new story)? Write what you see in the note.`; })(),
+      pip_review: `<b>Small window to review:</b> <span class="pkg">${esc(b.app || "")}</span>, ${esc(b.rules || "")}. The app was Paused without being Stopped, so it stayed visible while something else was in front. It is here because its end was not logged, nothing was logged for 5 minutes or more inside it, or a panel stayed open for minutes. Check the Small window lane against Screen and App in front.`,
+      app_usage: `<b>Long stretch app usage:</b> counted as <b>Active</b> for <span class="pkg">${esc(b.app || "")}</span>. The screen is logged on, the app is resumed before the silence and paused after it, so it stayed in front the whole time. Nothing was logged in between (typical of video). Rule it only if something looks wrong.`,
+      continuity_check: `<b>Why it is here:</b> settled as <b>${b.label}</b> by continuity alone (the same user app on both sides), but longer than 30 minutes.`,
+    }[b.reason] || `<b>Why unsure:</b>${why}`}</div>
+    <div class="small" style="margin-bottom:6px">${b.reason === "car_review" ? "Your ruling: is this a car-screen session with Maps projected?" : b.reason === "pip_review" ? "Your ruling: was the app visible in a small window (or under a panel) during this period?" : b.reason === "story_break" ? "Your ruling: what explains this break?" : "Your ruling: what was the device doing during this quiet stretch?"}</div>
+    <div class="rulebtns">${blChoices().map(([v, l], i) => `<button class="v ${picked(v) ? "on" : ""}" data-v="${v}">${ST_VAR[v] ? `<span class="sw" style="background:${stCol(v)}"></span>` : ""}${l}<kbd>${i + 1}</kbd></button>`).join("")}</div>
+    <div class="verdict" style="margin-top:8px"><input id="bl-note" placeholder="Note (optional)" value="${esc(b.ruling_note)}" style="flex:1;min-width:200px">
+      <button class="v primary" id="bl-save">Save<kbd>s</kbd></button><button class="v primary" id="bl-savenext">Save &amp; next<kbd>Enter</kbd></button>
+      ${b.ruling ? `<button class="v" id="bl-del">Remove ruling</button>` : ""}<span id="bl-msg" class="small"></span></div>
+    <div class="small" style="margin-top:6px"><kbd>j</kbd>/<kbd>k</kbd> next / previous without saving ·
+      <a href="#" id="bl-fileonly">only this file's stretches</a> · <a href="#" id="bl-overview">this file's day chart</a></div>`;
+  document.querySelectorAll("#bl-head button[data-v]").forEach(x => x.onclick = () => pickBlock(x.dataset.v));
+  $("#bl-save").onclick = () => saveBlock(false);
+  $("#bl-savenext").onclick = () => saveBlock(true);
+  if ($("#bl-del")) $("#bl-del").onclick = () => saveBlock(false, true);
+  $("#bl-fileonly").onclick = e => { e.preventDefault(); BL.fileFilter = {id: b.file_id, name: `${b.participant} (${b.folder})`}; loadBlocks(true); loadBlockSummary(); };
+  $("#bl-overview").onclick = e => { e.preventDefault(); setMode("files"); openStateFile(b.file_id); };
+}
+
+function pickBlock(v) {
+  BL.pick = v === "unsure" ? unsLabel(BL.data.block) : v;
+  document.querySelectorAll("#bl-head button[data-v]").forEach(x =>
+    x.classList.toggle("on", x.dataset.v === "unsure" ? isUns(BL.pick) : BL.pick === x.dataset.v));
+}
+
+async function saveBlock(next, del) {
+  const b = BL.data.block;
+  if (!del && !BL.pick) { $("#bl-msg").textContent = "Choose a ruling first."; return; }
+  const label = del ? "" : BL.pick, note = del ? "" : $("#bl-note").value;
+  await post("/api/states/ruling", {file_id: b.file_id, start: b.start, end: b.end, label, note});
+  const it = BL.list.find(x => x.block_id === b.block_id);
+  if (it) it.ruling = label || null;
+  b.ruling = label || null; b.ruling_note = note;
+  if (del) BL.pick = null;
+  loadBlockSummary();
+  if (next) return stepBlock(1, true);
+  renderBlockHead(); renderBlockList();
+  $("#bl-msg").innerHTML = `<span class="flash">${del ? "Removed" : "Saved"}</span>`;
+}
+
+function stepBlock(n, afterSave) {
+  const i = BL.list.findIndex(x => x.block_id === BL.cur);
+  let j = i + n;
+  while (afterSave && $("#bl-status").value === "todo" && BL.list[j] && BL.list[j].ruling) j += n;
+  if (BL.list[j]) openBlock(BL.list[j].block_id);
+  else renderBlockList();
+}
+
+function scrollToMark(sel) {
+  const el = document.querySelector(sel), box = $("#bl-evs");
+  if (el && box) box.scrollTop = el.offsetTop - 60;
+}
+
+function renderBlockEvents() {
+  const d = BL.data, b = d.block, tz = b.tz, [bi0, bi1] = d.block_i, N = d.n_events_total;
+  const vis = BL.events.filter(e => e.skip || BL.showHB || e.cls !== "heartbeat" || e.i === bi0 || e.i === bi1);
+  const real = vis.filter(e => !e.skip);
+  let maxgap = 0;
+  for (let k = 1; k < real.length; k++) maxgap = Math.max(maxgap, real[k].t - real[k - 1].t);
+  const first = BL.events.find(e => !e.skip), last = [...BL.events].reverse().find(e => !e.skip);
+  let prev = null, html = `<button class="loadmore" id="bl-earlier" ${first.i <= 0 ? "disabled" : ""}>${first.i <= 0 ? "start of the log" : `▲ load ${BL_STEP} earlier events`}</button>
+    <table><thead><tr><th>#</th><th>Time (${esc(tz)})</th><th class="num">Since previous shown</th><th>Event</th><th>Class</th><th>App</th></tr></thead><tbody>`;
+  for (const e of vis) {
+    if (e.skip) {
+      html += `<tr class="skip"><td colspan="6">… ${(e.to - e.from - 1).toLocaleString()} events inside the block not loaded · <a href="#" class="fill">load ${BL_STEP} more</a> …</td></tr>`;
+      prev = null;
+      continue;
+    }
+    const gap = prev == null ? null : e.t - prev;
+    prev = e.t;
+    const inb = e.i >= bi0 && e.i <= bi1;
+    html += `<tr class="${inb ? "inblock" : ""} ${e.cls === "heartbeat" ? "hb" : ""}"><td class="small">${e.i}</td>
+      <td style="white-space:nowrap">${fmt(e.t, tz, "mdt")}</td>
+      <td class="num ${gap != null && gap > 0 && gap === maxgap ? "biggap" : ""}">${gap == null ? "" : dur(gap)}</td>
+      <td>${evCell(e)}</td><td>${e.cls}</td><td>${esc(e.label || e.app)} <span class="pkg">${esc(e.app)}</span></td></tr>`;
+    if (e.i === bi0) html += `<tr class="mark" id="bl-start"><td colspan="6">⋯ quiet stretch: ${dur(b.duration_s)} with no event · ${b.label} ⋯</td></tr>`;
+  }
+  html += `</tbody></table><button class="loadmore" id="bl-later" ${last.i >= N - 1 ? "disabled" : ""}>${last.i >= N - 1 ? "end of the log" : `▼ load ${BL_STEP} later events`}</button>`;
+  $("#bl-evs").innerHTML = html;
+  $("#bl-earlier").onclick = () => moreEvents("earlier");
+  $("#bl-later").onclick = () => moreEvents("later");
+  document.querySelectorAll("#bl-evs a.fill").forEach(a => a.onclick = ev => { ev.preventDefault(); moreEvents("middle"); });
+}
+
+async function moreEvents(where) {
+  const fid = BL.data.block.file_id, box = $("#bl-evs");
+  const first = BL.events.find(e => !e.skip), last = [...BL.events].reverse().find(e => !e.skip);
+  if (where === "earlier") {
+    const r = await api(`/api/states/events/${fid}?i0=${Math.max(0, first.i - BL_STEP)}&i1=${first.i}`);
+    const h0 = box.scrollHeight, s0 = box.scrollTop;
+    BL.events = r.events.concat(BL.events);
+    renderBlockEvents();
+    box.scrollTop = s0 + (box.scrollHeight - h0);       // keep the rows you were looking at in place
+  } else if (where === "later") {
+    const r = await api(`/api/states/events/${fid}?i0=${last.i + 1}&i1=${last.i + 1 + BL_STEP}`);
+    const s0 = box.scrollTop;
+    BL.events = BL.events.concat(r.events);
+    renderBlockEvents();
+    box.scrollTop = s0;
+  } else {
+    const k = BL.events.findIndex(e => e.skip), sk = BL.events[k];
+    const r = await api(`/api/states/events/${fid}?i0=${sk.from + 1}&i1=${Math.min(sk.to, sk.from + 1 + BL_STEP)}`);
+    const s0 = box.scrollTop;
+    sk.from = r.events.length ? r.events[r.events.length - 1].i : sk.to;
+    BL.events.splice(k, sk.from + 1 >= sk.to ? 1 : 0, ...r.events);
+    renderBlockEvents();
+    box.scrollTop = s0;
+  }
+}
+
+$("#bl-list").onclick = e => {
+  if (e.target.classList.contains("bl-chk")) {           // tick a block for the quick action; do not open it
+    const id = +e.target.dataset.id;
+    if (e.target.checked) BL.selected.add(id); else BL.selected.delete(id);
+    BL.confirm = false;
+    return renderBulk();
+  }
+  const it = e.target.closest(".item");
+  if (it) openBlock(+it.dataset.id);
+};
+["#bl-label", "#bl-status", "#bl-len", "#bl-inside", "#bl-reason", "#bl-order"].forEach(id => $(id).onchange = () => loadBlocks());
+$("#bl-role").onchange = () => BL.byFile && !BL.fileFilter ? loadReviewFiles() : loadBlocks();
+$("#rf-sort").onchange = renderReviewFiles;
+$("#rf-list").onclick = e => { const it = e.target.closest(".item"); if (it) openReviewFile(+it.dataset.id, it.dataset.name); };
+document.querySelectorAll("#st-mode button").forEach(b => b.onclick = () => setMode(b.dataset.m === "blocks" ? "all" : b.dataset.m));
+
+document.querySelectorAll("#st-layer button").forEach(b => b.onclick = () => {
+  ST.layer = b.dataset.l;
+  document.querySelectorAll("#st-layer button").forEach(x => x.classList.toggle("on", x === b));
+  if (BL.mode === "blocks" && BL.byFile && !BL.fileFilter) { loadReviewFiles(); loadBlockSummary(); return; }
+  if (BL.mode === "blocks") { loadBlocks(); loadBlockSummary(); return; }
+  renderStateList();
+  if (ST.file) { renderStateFile(); drawActogram(); if (ST.win) refreshWindow(); }
+});
+$("#st-list").onclick = e => { const it = e.target.closest(".item"); if (it) openStateFile(+it.dataset.id); };
+["#st-sort", "#st-status"].forEach(id => $(id).onchange = renderStateList);
+document.addEventListener("keydown", e => {
+  if (!$("#states").classList.contains("on") || ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return;
+  if (BL.mode === "blocks") {
+    if (BL.data && BL.cur && /^[1-4]$/.test(e.key) && blChoices()[+e.key - 1]) pickBlock(blChoices()[+e.key - 1][0]);
+    else if (BL.cur && e.key === "s") { e.preventDefault(); saveBlock(false); }
+    else if (BL.cur && e.key === "Enter") { e.preventDefault(); saveBlock(true); }
+    else if (e.key === "j" || e.key === "ArrowDown") { e.preventDefault(); stepBlock(1); }
+    else if (e.key === "k" || e.key === "ArrowUp") { e.preventDefault(); stepBlock(-1); }
+    return;
+  }
+  if (ST.sel && /^[1-7]$/.test(e.key)) pickRuling(ST_LABELS[+e.key - 1]);
+  else if (ST.sel && e.key === "s") { e.preventDefault(); saveRuling(false); }
+  else if (ST.win && e.key === "[") openWindow(ST.center - ST.span * 0.75);
+  else if (ST.win && e.key === "]") openWindow(ST.center + ST.span * 0.75);
+});
+window.addEventListener("resize", () => {
+  if ($("#states").classList.contains("on") && ST.file) { drawActogram(); if (ST.win) drawWindow(); }
+});
+
+loadSummary().catch(e => $("#stats").innerHTML = `<span class="err">${esc(e.message)}</span>`);
+loadQueue().catch(e => $("#queue").innerHTML = `<div class="err" style="padding:10px">${esc(e.message)}</div>`);
+</script>
+</body>
+</html>

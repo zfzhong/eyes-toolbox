@@ -622,6 +622,8 @@ if __name__ == "__main__":
     file_name = os.path.basename(filename)
 
     tokens = file_name.split('.')
+    # the clean log (offscreen_chains) keeps the usual output names
+    tokens[0] = tokens[0][:-len('_clean')] if tokens[0].endswith('_clean') else tokens[0]
 
     logfile = "%s/%s_log_one.csv" % (dir_name, tokens[0])
     outfile = "%s/%s_act_one.csv" % (dir_name, tokens[0])

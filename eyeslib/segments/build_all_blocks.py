@@ -254,7 +254,8 @@ def dump_blocks(shutdown_blocks, idle_blocks, glance_blocks, gap_blocks, blocks_
 
 def main():
     if len(sys.argv) < 6:
-        print("Usage: python build_all_blocks.py shutdown.csv idle.csv gap.csv proximity_seconds blocks.csv")
+        print("Usage: python build_all_blocks.py shutdown.csv idle.csv gap.csv proximity_seconds blocks.csv [activity.csv]")
+        print("  activity.csv: the *_reordered.csv log; its app foreground events are used by GLANCE detection.")
         sys.exit(1)
 
     shutdown_csv = sys.argv[1]
@@ -262,11 +263,14 @@ def main():
     gap_csv      = sys.argv[3]
     proximity_seconds  = float(sys.argv[4])
     blocks_out_csv = sys.argv[5]
+    activity_csv   = sys.argv[6] if len(sys.argv) > 6 else None
+    if activity_csv is None:
+        print("[WARN] no activity log given: GLANCE uses Keyguard Hidden only (no foreground-app evidence)")
 
     shutdown_head = build_shutdown_blocks_from_csv(shutdown_csv, proximity_seconds)
     idle_head     = build_idle_blocks_from_csv(idle_csv, proximity_seconds)
     gap_head      = build_gap_blocks_from_csv(gap_csv)
-    glance_head   = build_glance_blocks_from_csv(idle_csv, shutdown_csv, gap_csv)
+    glance_head   = build_glance_blocks_from_csv(idle_csv, shutdown_csv, gap_csv, activity_csv)
 
 
     shutdown_blocks = list_from_linked(shutdown_head) or []

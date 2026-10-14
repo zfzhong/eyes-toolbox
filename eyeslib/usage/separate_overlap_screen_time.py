@@ -42,97 +42,87 @@ class AppUsageChunks:
         self.chunks.insert(i, chunk)
 
     def separate_overlaped_chunks(self, out_csv_file):
+        """
+        Split app-level chunks into primary / secondary rows.
+
+        Rule: at any instant, among all chunks that are running, the one that
+        started most recently is PRIMARY; every other running chunk is
+        SECONDARY for that instant. When the primary chunk ends, the most
+        recently started chunk still running becomes primary again.
+
+        Implemented as a sweep line over all chunk boundaries, so every second
+        of every input chunk appears in exactly one output row, and the
+        primary rows never overlap each other.
+        """
+        import heapq
+
+        chunks = [c for c in self.chunks if c[TIME_END] > c[TIME_START]]
+        # stable order: by start, then input order (later index wins ties)
+        order = sorted(range(len(chunks)), key=lambda k: chunks[k][TIME_START])
+        rank = {k: r for r, k in enumerate(order)}  # higher rank = started later
+
+        events = []  # (time, kind, idx); kind 0 = end, 1 = start (ends first)
+        for k, c in enumerate(chunks):
+            events.append((c[TIME_START], 1, k))
+            events.append((c[TIME_END], 0, k))
+        events.sort(key=lambda e: (e[0], e[1], rank[e[2]]))
+
+        rows = []            # (start, end, idx, is_primary)
+        open_row = {}        # idx -> (row_start, is_primary)
+        active = set()
+        heap = []            # (-rank, idx), lazy deletion
+        primary = None
+
+        def close(k, t):
+            s, is_p = open_row.pop(k)
+            if t > s:
+                rows.append((s, t, k, is_p))
+
+        i = 0
+        n = len(events)
+        while i < n:
+            t = events[i][0]
+            started = []
+            while i < n and events[i][0] == t:
+                _, kind, k = events[i]
+                if kind == 0:
+                    active.discard(k)
+                    close(k, t)
+                else:
+                    active.add(k)
+                    heapq.heappush(heap, (-rank[k], k))
+                    started.append(k)
+                i += 1
+
+            while heap and heap[0][1] not in active:
+                heapq.heappop(heap)
+            new_primary = heap[0][1] if heap else None
+
+            if new_primary != primary:
+                if primary is not None and primary in active:
+                    close(primary, t)
+                    open_row[primary] = (t, False)
+                if new_primary is not None and new_primary in open_row:
+                    close(new_primary, t)
+                primary = new_primary
+
+            for k in started:
+                if k not in open_row:
+                    open_row[k] = (t, k == primary)
+            if primary is not None and primary not in open_row:
+                open_row[primary] = (t, True)
+
+        rows.sort(key=lambda r: (r[0], not r[3]))
+
         f = open(out_csv_file, 'w')
         f.write("app_package_name,resume_time,end_time,duration,secondary_duration,app_label\n")
-
-        working_on_stack = False
-        stack = []
-        i = 0
-        while i < len(self.chunks):
-            curr_chunk = self.chunks[i]
-
-            if len(stack) <= 0:
-                stack.append(curr_chunk)
-            elif is_overlaped(stack[-1], curr_chunk):
-                stack.append(curr_chunk)
+        for s, e, k, is_p in rows:
+            c = chunks[k]
+            d = get_diff_seconds(s, e)
+            if is_p:
+                f.write("%s,%s,%s,%s,0,%s\n" % (c[APP_NAME], s, e, d, c[APP_LABEL]))
             else:
-                # work on the stack to identify the overlaped time frame
-                while len(stack) > 0:
-                    stack_chunk = stack.pop()
-                    #print('top stack', stack_chunk[TIME_START], stack_chunk[TIME_END])
-
-                    if working_on_stack is False:    
-                        # the top stack chunk
-                        working_on_stack = True
-
-                        start_time = stack_chunk[TIME_START]
-                        end_time = stack_chunk[TIME_END]
-                    
-                        # print primary
-                        duration = get_diff_seconds(start_time, end_time)
-                        f.write("%s,%s,%s,%s,0,%s\n" % (stack_chunk[APP_NAME], start_time, end_time, duration, stack_chunk[APP_LABEL]))
-                    else:                    
-                        if stack_chunk[TIME_START] < start_time:
-                            # print primary
-                            duration = get_diff_seconds(stack_chunk[TIME_START], start_time)
-                            f.write("%s,%s,%s,%s,0,%s\n" % (stack_chunk[APP_NAME],stack_chunk[TIME_START],start_time,duration,stack_chunk[APP_LABEL]))
-
-                        if stack_chunk[TIME_END] <= end_time:
-                            # print secondary
-                            duration = get_diff_seconds(start_time, stack_chunk[TIME_END])
-                            f.write("%s,%s,%s,0,%s,%s\n" % (stack_chunk[APP_NAME],start_time,stack_chunk[TIME_END],duration,stack_chunk[APP_LABEL]))
-                        else:
-                            # print secondary
-                            duration = get_diff_seconds(start_time, end_time)
-                            f.write("%s,%s,%s,0,%s,%s\n" % (stack_chunk[APP_NAME],start_time,end_time,duration,stack_chunk[APP_LABEL]))
-                        
-                            # create a new chunk (leftover from curr_stack_chunk)
-                            new_chunk = create_new_chunk(stack_chunk, end_time, stack_chunk[TIME_END])
-                            #print("new chunk", new_chunk)
-                            self.insert_chunk(i, new_chunk)
-
-                        start_time = stack_chunk[TIME_START]
-
-                working_on_stack = False
-
-            i += 1
-        
-        # clean up the stack
-        while len(stack) > 0:
-            stack_chunk = stack.pop()
-            
-            if working_on_stack is False:    
-                # the top stack chunk
-                working_on_stack = True
-
-                start_time = stack_chunk[TIME_START]
-                end_time = stack_chunk[TIME_END]
-                    
-                # print primary
-                duration = get_diff_seconds(start_time, end_time)
-                f.write("%s,%s,%s,%s,0,%s\n" % (stack_chunk[APP_NAME], start_time, end_time, duration, stack_chunk[APP_LABEL]))
-            else:                    
-                if stack_chunk[TIME_START] < start_time:
-                    # print primary
-                    duration = get_diff_seconds(stack_chunk[TIME_START], start_time)
-                    f.write("%s,%s,%s,%s,0,%s\n" % (stack_chunk[APP_NAME],stack_chunk[TIME_START],start_time,duration,stack_chunk[APP_LABEL]))
-
-                if stack_chunk[TIME_END] <= end_time:
-                    # print secondary
-                    duration = get_diff_seconds(start_time, stack_chunk[TIME_END])
-                    f.write("%s,%s,%s,0,%s,%s\n" % (stack_chunk[APP_NAME],start_time,stack_chunk[TIME_END],duration,stack_chunk[APP_LABEL]))
-                else:
-                    # print secondary
-                    duration = get_diff_seconds(start_time, end_time)
-                    f.write("%s,%s,%s,0,%s,%s\n" % (stack_chunk[APP_NAME],start_time,end_time,duration,stack_chunk[APP_LABEL]))
-                        
-                    # print primary (leftover from curr_stack_chunk)
-                    duration = get_diff_seconds(end_time, stack_chunk[TIME_END])
-                    f.write("%s,%s,%s,%s,0,%s\n" % (stack_chunk[APP_NAME],end_time,stack_chunk[TIME_END],duration,stack_chunk[APP_LABEL]))
-                    end_time = stack_chunk[TIME_END]
-                    
-            start_time = stack_chunk[TIME_START]
-
+                f.write("%s,%s,%s,0,%s,%s\n" % (c[APP_NAME], s, e, d, c[APP_LABEL]))
         f.close()
 
 

@@ -164,14 +164,15 @@ def detect_gaps(infile, outfile, gap_hours=6):
         if prev_record:
             diff_time = record['event_timestamp'] - prev_record['event_timestamp']
 
+            # Every row appended below is a COPY with its own event_name. Appending the record
+            # itself and labelling it in place let a later step relabel a row that was already
+            # written (a 'Gap End' turned into 'Gap Start' when a boot event followed within
+            # a second), which broke the Start/End pairing in 89 of 201 A1 files.
+
             # 1) GAP based on time difference
             if diff_time >= gap_threshold:
-                #print(prev_record)
-                prev_record['event_name'] = 'Gap Start'
-                out_records.append(prev_record)
-
-                record['event_name'] = 'Gap End'
-                out_records.append(record)
+                out_records.append({**prev_record, 'event_name': 'Gap Start'})
+                out_records.append({**record, 'event_name': 'Gap End'})
 
             # 2) GAP based on 'shutdown/bootup' events
             elif record['interaction_type'] in end_reboot_states:
@@ -183,12 +184,12 @@ def detect_gaps(infile, outfile, gap_hours=6):
                     j = j + 1
 
                 if j > i and j < len(records):
-                    record['event_name'] = 'Gap Start'
-                    out_records.append(record)
+                    out_records.append({**record, 'event_name': 'Gap Start'})
+                    out_records.append({**records[j], 'event_name': 'Gap End'})
 
-                    records[j]['event_name'] = 'Gap End'
-                    out_records.append(records[j])
-
+                    # the event before records[j] is the previous event for the next step;
+                    # keeping the old prev_record created a second, overlapping gap
+                    prev_record = records[j - 1]
                     i = j
                     continue
 
@@ -202,17 +203,23 @@ def detect_gaps(infile, outfile, gap_hours=6):
 
                 if j < i and j >= 0:
                     if len(out_records) == 0 or records[j]['event_timestamp'] >= out_records[-1]['event_timestamp']:
-                        records[j]['event_name'] = 'Gap Start'
-                        out_records.append(records[j])
-                    
-                        record['event_name'] = 'Gap End'
-                        out_records.append(record)
+                        out_records.append({**records[j], 'event_name': 'Gap Start'})
+                        out_records.append({**record, 'event_name': 'Gap End'})
 
 
 
         prev_record = record
         i = i + 1
-    
+
+    # drop exact duplicate gaps (the same Start/End pair found by two of the rules above)
+    pairs, seen = [], set()
+    for k in range(0, len(out_records) - 1, 2):
+        key = (out_records[k]['event_timestamp'], out_records[k + 1]['event_timestamp'])
+        if key not in seen:
+            seen.add(key)
+            pairs += out_records[k:k + 2]
+    out_records = pairs
+
     df_out = pd.DataFrame(out_records)
     
     dir_path = os.path.dirname(outfile)

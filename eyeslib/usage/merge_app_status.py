@@ -39,12 +39,30 @@ def process_and_split(chunk_file, block_file, duration_threshold=5):
     blocks = df_blocks.to_dict('records')
 
     results = []
-    c_idx, b_idx = 0, 0
+
+    # Chunks overlap each other (primary vs secondary rows), so the block
+    # pointer cannot be carried monotonically from one chunk to the next.
+    # For each chunk, start at the first block whose running-max end_ts is
+    # past the chunk start (blocks are sorted by start and may overlap).
+    import bisect
+    max_end = []
+    running = None
+    for blk in blocks:
+        running = blk['end_dt'] if running is None or blk['end_dt'] > running else running
+        max_end.append(running)
+
+    c_idx = 0
+    b_idx = 0
+    positioned_for = -1
 
     # 6. Iterative Splitting Logic
     while c_idx < len(chunks):
         chunk = chunks[c_idx]
         c_start, c_end = chunk['start_dt'], chunk['end_dt']
+
+        if positioned_for != c_idx:
+            positioned_for = c_idx
+            b_idx = bisect.bisect_right(max_end, c_start)
 
         if b_idx >= len(blocks):
             new_c = chunk.copy()

@@ -9,6 +9,9 @@ uniq:	preprocess
 reorder: uniq
 	$(PYTHON) -m eyeslib.preprocess.reorder $(dir)
 
+offscreen:	reorder
+	$(PYTHON) -m eyeslib.runners.run_offscreen $(dir)
+
 gap:	reorder
 	$(PYTHON) -m eyeslib.runners.run_gap_segments $(dir)
 
@@ -21,13 +24,16 @@ idle:	shutdown
 blocks:	idle
 	$(PYTHON) -m eyeslib.runners.run_all_blocks $(dir)
 
+sessions:	reorder
+	$(PYTHON) -m eyeslib.runners.run_sessions $(dir)
+
 pickups:	
 	$(PYTHON) -m eyeslib.runners.run_all_pickups $(dir) 5 5
 
 pickupstz:	pickups
 	$(PYTHON) -m eyeslib.runners.run_tz_columns_for_pickups $(dir)
 
-parser:	blocks
+parser:	blocks offscreen
 	$(PYTHON) -m eyeslib.runners.run_parser4 $(dir) Y
 
 app:	parser
@@ -41,6 +47,9 @@ merge:	nest
 
 fau:	merge
 	$(PYTHON) -m eyeslib.runners.run_fau_screen_time $(dir)
+
+car:	fau
+	$(PYTHON) -m eyeslib.runners.run_car_periods $(dir)
 
 allevents:
 	$(PYTHON) -m eyeslib.runners.run_all_events $(dir)
@@ -58,3 +67,10 @@ all: visual pickups
 
 clean: 
 	rm -rf $(dir)/processed
+
+# Local review app (see eyes_review/README.md)
+review-ingest:
+	$(PYTHON) -m eyes_review.ingest $(dir)
+
+review:
+	$(PYTHON) -m eyes_review.server
