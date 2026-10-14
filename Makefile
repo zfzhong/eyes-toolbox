@@ -51,6 +51,9 @@ fau:	merge
 car:	fau
 	$(PYTHON) -m eyeslib.runners.run_car_periods $(dir)
 
+calls:	car
+	$(PYTHON) -m eyeslib.runners.run_calls $(dir)
+
 allevents:
 	$(PYTHON) -m eyeslib.runners.run_all_events $(dir)
 
