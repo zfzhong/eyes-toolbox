@@ -49,10 +49,77 @@ SYSTEM = [
     (r"^com\.amazon\.(settings|venezia|kindle\.unifiedSearch)|^com\.android\.settings|systemui|permissioncontroller|credentialmanager|aodservice|\.lool$|packageinstaller"
      r"|\.vending$|\.gms$|^com\.example\.eyesapp|keyguard|bixby|smartcapture|filemanager|myfiles|oneconnect", "Utilities"),
 ]
-OVERRIDES = {
-    "tv.danmaku.bili": "Entertainment",          # Bilibili (not on the US Play Store)
-    "com.tencent.android.qqdownloader": "Utilities",   # 应用宝, an app store
+# Chinese apps (10-15, David: on Daijun's OPPO "美团 is food ordering and delivery"): most are not on the US Play
+# Store, or come back without a category, so they fell to Other. Their category as on the App Store (China),
+# folded into iOS Screen Time's categories like the rest.
+CN = {
+    # Social
+    "com.tencent.mm": "Social", "com.tencent.mobileqq": "Social", "com.tencent.tim": "Social",
+    "com.sina.weibo": "Social", "com.sina.weibolite": "Social", "com.xingin.xhs": "Social", "com.zhihu.android": "Social",
+    "com.douban.frodo": "Social", "com.immomo.momo": "Social", "com.p1.mobile.putong": "Social",
+    # Entertainment: short video, video, music, live streams (抖音 / 快手 as TikTok on the App Store)
+    "com.ss.android.ugc.aweme": "Entertainment", "com.ss.android.ugc.aweme.lite": "Entertainment",
+    "com.ss.android.ugc.live": "Entertainment", "com.smile.gifmaker": "Entertainment", "com.kuaishou.nebula": "Entertainment",
+    "com.tencent.weishi": "Entertainment", "com.ss.android.article.video": "Entertainment",
+    "tv.danmaku.bili": "Entertainment", "com.qiyi.video": "Entertainment", "com.tencent.qqlive": "Entertainment",
+    "com.youku.phone": "Entertainment", "com.hunantv.imgo.activity": "Entertainment",
+    "com.tencent.qqmusic": "Entertainment", "com.netease.cloudmusic": "Entertainment", "com.kugou.android": "Entertainment",
+    "cn.kuwo.player": "Entertainment", "com.ximalaya.ting.android": "Entertainment", "com.tencent.karaoke": "Entertainment",
+    "com.duowan.kiwi": "Entertainment", "air.tv.douyu.android": "Entertainment",
+    # Information & Reading: news, novels, car news
+    "com.ss.android.article.news": "Information & Reading", "com.ss.android.article.lite": "Information & Reading",
+    "com.tencent.news": "Information & Reading", "com.netease.newsreader.activity": "Information & Reading",
+    "com.sohu.newsclient": "Information & Reading", "com.ifeng.news2": "Information & Reading",
+    "com.dragon.read": "Information & Reading", "com.qq.reader": "Information & Reading",
+    "com.chaozh.iReaderFree": "Information & Reading", "com.ss.android.auto": "Information & Reading",
+    "com.cubic.autohome": "Information & Reading", "cn.xuexi.android": "Information & Reading",
+    # Browser (David 10-14: a separate category on Android): search apps too
+    "com.baidu.searchbox": "Browser", "com.baidu.searchbox.lite": "Browser", "com.tencent.mtt": "Browser",
+    "com.UCMobile": "Browser", "com.quark.browser": "Browser", "com.sogou.activity.src": "Browser",
+    # Shopping & Food: shopping, food delivery, reviews
+    "com.sankuai.meituan": "Shopping & Food", "com.sankuai.meituan.takeoutnew": "Shopping & Food", "me.ele": "Shopping & Food",
+    "com.dianping.v1": "Shopping & Food", "com.xunmeng.pinduoduo": "Shopping & Food", "com.taobao.taobao": "Shopping & Food",
+    "com.tmall.wireless": "Shopping & Food", "com.jingdong.app.mall": "Shopping & Food", "com.taobao.idlefish": "Shopping & Food",
+    "com.achievo.vipshop": "Shopping & Food", "com.wudaokou.hippo": "Shopping & Food",
+    # Productivity & Finance: payment, banks, insurance, work, AI assistants, cloud storage
+    "com.eg.android.AlipayGphone": "Productivity & Finance", "com.unionpay": "Productivity & Finance",
+    "com.icbc": "Productivity & Finance", "com.chinamworld.main": "Productivity & Finance",
+    "com.android.bankabc": "Productivity & Finance", "cmb.pb": "Productivity & Finance",
+    "com.chinamworld.bocmbci": "Productivity & Finance", "com.pingan.carowner": "Productivity & Finance",
+    "com.alibaba.android.rimet": "Productivity & Finance", "com.tencent.wework": "Productivity & Finance",
+    "com.ss.android.lark": "Productivity & Finance", "com.tencent.wemeet.app": "Productivity & Finance",
+    "cn.wps.moffice_eng": "Productivity & Finance", "com.baidu.netdisk": "Productivity & Finance",
+    "com.larus.nova": "Productivity & Finance", "com.deepseek.chat": "Productivity & Finance",
+    "com.moonshot.kimichat": "Productivity & Finance",
+    # Travel: maps, ride hailing, trains, trips, car apps
+    "com.autonavi.minimap": "Travel", "com.baidu.BaiduMap": "Travel", "com.tencent.map": "Travel",
+    "com.sdu.didi.psnger": "Travel", "com.MobileTicket": "Travel", "ctrip.android.view": "Travel", "com.Qunar": "Travel",
+    "com.changan.uni": "Travel",
+    # Health & Fitness
+    "com.gotokeep.keep": "Health & Fitness", "com.xiaomi.hm.health": "Health & Fitness", "com.mi.health": "Health & Fitness",
+    "com.huawei.health": "Health & Fitness", "com.heytap.health": "Health & Fitness",
+    # Education
+    "com.youdao.dict": "Education", "com.zhilehuo.sqertongshizi": "Education", "com.fenbi.android.solar": "Education",
+    # Utilities: government services, app stores, watch companions
+    "com.tmri.app.main": "Utilities", "com.tencent.android.qqdownloader": "Utilities", "com.xtc.watch": "Utilities",
 }
+
+OVERRIDES = {
+    **CN,
+}
+
+# Chinese games and study apps by publisher prefix, and the phone makers' own system apps (ColorOS / HeyTap,
+# MIUI / HyperOS, EMUI / HarmonyOS, MagicOS, OriginOS): Utilities, except their music, video and health apps.
+VENDOR = r"^com\.(oplus|coloros|heytap|oppo|nearme|miui|xiaomi|mi|huawei|hihonor|honor|vivo|bbk|iqoo|meizu)\."
+SYSTEM_CN = [
+    (r"^com\.tencent\.tmgp\.|^com\.miHoYo\.|^com\.hypergryph\.|^com\.tencent\.lolm$", "Games"),
+    (r"^com\.zuoyebang\.|^com\.yuanfudao\.|^com\.fenbi\.", "Education"),
+    (VENDOR + r".*(music|video|player|movie)", "Entertainment"),
+    (VENDOR + r".*health", "Health & Fitness"),
+    (VENDOR + r".*weather", "Information & Reading"),
+    (VENDOR, "Utilities"),
+]
+
 
 def fold_play(c):
     if not c:
@@ -61,7 +128,7 @@ def fold_play(c):
 
 
 def system(pkg):
-    for rx, cat in SYSTEM:
+    for rx, cat in SYSTEM + SYSTEM_CN:
         if re.search(rx, pkg or ""):
             return cat
     return None
