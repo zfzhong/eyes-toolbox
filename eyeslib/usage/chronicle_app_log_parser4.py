@@ -25,6 +25,10 @@ SNI = 'ScreenNonInteractive'
 
 anomaly_states = [MAR, NPI, NSI, AKD, SSD]
 
+screen_on_states = ['Screen Interactive', 'Unknown importance: 15']
+screen_off_states = ['Screen Non-interactive', 'Unknown importance: 16']
+HANDOVER_STOP_SECONDS = 10.0   # Stopped(A1) after Paused(A1) -> Resumed(A2): see ScreenTimeLogs.left_behind
+
 background_states = ['Move to Background', 'Activity Paused']
 foreground_states = ['Move to Foreground', 'Activity Resumed']
 
@@ -237,10 +241,31 @@ class ScreenTimeLogs:
         
         return False
 
+    def left_behind(self, app_name, b1, t_stop):
+        """A Stopped later than the proximity interval after the latest Resumed still belongs to the activity the
+        app just left when that activity was Paused at the handover, Paused(A1) -> Resumed(A2) within the
+        proximity interval, has no Stopped yet, and the Stopped comes within HANDOVER_STOP_SECONDS of Resumed(A2).
+        An activity is always Paused before it is Stopped, so a Stopped with such an activity waiting is that
+        activity going invisible, not the app being killed. Games are slow to draw their first frame: in
+        Aizhong's Delta Force (com.tencent.tmgp.dfm, 2026-10-11) Stopped(Splash) came 2.1 s after
+        Resumed(GameActivity), the game was cut to 2 s and its 48 min were lost (Android counted them).
+        Only while the screen is on: with the screen off an app reshuffling its activities and then going quiet
+        is being closed (A1 7184_C02, YouTube Kids 2025-05-13: Paused, Resumed, Stopped 2.1 s later with the
+        screen off, then nothing for 23 days)."""
+        if not self.screen_on or not self.queues_pause.get(app_name):
+            return False
+        a1 = self.queues_pause[app_name][-1]
+        if a1.is_stopped() or not a1.time_pause or not b1.time_resume:
+            return False
+        handover = get_time_diff_seconds(a1.time_pause, b1.time_resume)
+        late = get_time_diff_seconds(b1.time_resume, t_stop)
+        return 0 <= handover < self.proximity_interval and 0 <= late < HANDOVER_STOP_SECONDS
+
     def reconstruct_blocks(self):
         self.num_resume = 0
         self.num_pause = 0
         self.num_stop = 0
+        self.screen_on = True       # unknown at the start of the log: assume on
 
         prev_block = None
         curr_block = None
@@ -256,6 +281,10 @@ class ScreenTimeLogs:
             app_label = log[APP_LABEL]
             #print(i, app_name)
             interaction_type = log[INT_TYPE]
+            if interaction_type in screen_on_states:
+                self.screen_on = True
+            elif interaction_type in screen_off_states:
+                self.screen_on = False
 
             if interaction_type in foreground_states:
                 self.num_resume += 1
@@ -413,7 +442,7 @@ class ScreenTimeLogs:
                         self.queues_stop[app_name].append(curr_block)
                 else:
                     b1 = self.queues_resume[app_name][-1]
-                    if self.in_proximity(b1.time_resume, log[EVENT_TS]):
+                    if self.in_proximity(b1.time_resume, log[EVENT_TS]) or self.left_behind(app_name, b1, log[EVENT_TS]):
                         """
                         Find the latest block that needs a 'Stopped'.
                         """
