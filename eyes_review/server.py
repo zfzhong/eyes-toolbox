@@ -61,6 +61,35 @@ def load_raw_events(path):
     return df[["t", "app_package_name", "application_label", "interaction_type", "name", "cls"]]
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+SCENARIOS_MD = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs", "scenarios.md")
+PROBLEM = "- **Problem it illustrates:**"
+
+
+def load_scenarios(path=SCENARIOS_MD):
+    """docs/scenarios.md (a copy of the project's representative scenarios) split into the intro and one entry
+    per "## S<n>." heading. Each entry's "Problem it illustrates" bullet becomes its summary."""
+    import re
+    with open(path, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    intro, items, cur = [], [], None
+    for ln in lines:
+        m = re.match(r"^## (S\d+)\.\s*(.*)$", ln)
+        if m:
+            cur = {"id": m.group(1), "title": m.group(2).strip(), "problem": "", "body": []}
+            items.append(cur)
+        elif cur is None:
+            intro.append(ln)
+        elif ln.startswith(PROBLEM):
+            cur["problem"] = ln[len(PROBLEM):].strip()
+        else:
+            cur["body"].append(ln)
+    for it in items:
+        while it["body"] and it["body"][-1].strip() in ("", "---"):
+            it["body"].pop()
+        it["body"] = "\n".join(it["body"]).strip("\n")
+    while intro and intro[-1].strip() in ("", "---"):
+        intro.pop()
+    return {"intro": "\n".join(intro), "scenarios": items}
 VERDICTS = {"keep", "truncate", "log_missing", "exclude", "unsure"}
 CUT_VERDICTS = {"truncate", "log_missing"}   # verdicts that end the session at truncate_at
 MAX_EVENTS = 4000
@@ -143,6 +172,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(self.state_block(int(p.rsplit("/", 1)[1]), int(q.get("context", 150))))
             if p.startswith("/api/states/events/"):
                 return self.send(self.state_events(int(p.rsplit("/", 1)[1]), int(q["i0"]), int(q["i1"])))
+            if p == "/api/scenarios":
+                return self.send(self.scenarios())
             if p.startswith("/api/states/window/"):
                 return self.send(self.state_window(int(p.rsplit("/", 1)[1]), float(q["t0"]), float(q["t1"])))
             return self.send({"error": "not found"}, code=404)
@@ -162,6 +193,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(self.state_ruling(body))
             if path == "/api/states/rulings_bulk":
                 return self.send(self.state_rulings_bulk(body))
+            if path == "/api/scenario_comment":
+                return self.send(self.scenario_comment(body))
             return self.send({"error": "not found"}, code=404)
         except Exception as e:
             return self.send({"error": repr(e)}, code=500)
@@ -584,6 +617,30 @@ class Handler(BaseHTTPRequestHandler):
         con.commit()
         return {"ok": True}
 
+    def scenarios(self):
+        d = load_scenarios()
+        con = self.db()
+        notes = {r["sid"]: dict(r) for r in con.execute("SELECT * FROM scenario_comments")}
+        for it in d["scenarios"]:
+            n = notes.get(it["id"], {})
+            it.update(comment=n.get("comment", ""), reviewer=n.get("reviewer", ""), updated_at=n.get("updated_at", ""))
+        return d
+
+    def scenario_comment(self, b):
+        sid = str(b["id"])
+        text = b.get("comment") or ""
+        con = self.db()
+        if not text.strip():
+            con.execute("DELETE FROM scenario_comments WHERE sid = ?", (sid,))
+            con.commit()
+            return {"ok": True, "updated_at": ""}
+        now = datetime.datetime.now().isoformat(timespec="seconds")
+        con.execute("""INSERT INTO scenario_comments VALUES (?, ?, ?, ?) ON CONFLICT(sid) DO UPDATE SET
+            comment=excluded.comment, reviewer=excluded.reviewer, updated_at=excluded.updated_at""",
+                    (sid, text, getpass.getuser(), now))
+        con.commit()
+        return {"ok": True, "updated_at": now}
+
     def export(self, q):
         """All sessions with verdicts applied (streamed CSV)."""
         con = self.db()
@@ -646,7 +703,8 @@ def main():
         CREATE TABLE IF NOT EXISTS state_signs (file_id INTEGER, verdict TEXT, how TEXT, n INTEGER, hours REAL, signature TEXT);
         CREATE TABLE IF NOT EXISTS state_file_review (stem TEXT PRIMARY KEY, status TEXT, note TEXT, reviewer TEXT, updated_at TEXT);
         CREATE TABLE IF NOT EXISTS state_rulings (stem TEXT, start REAL, end REAL, label TEXT, note TEXT, reviewer TEXT,
-            updated_at TEXT, PRIMARY KEY (stem, start));""")
+            updated_at TEXT, PRIMARY KEY (stem, start));
+        CREATE TABLE IF NOT EXISTS scenario_comments (sid TEXT PRIMARY KEY, comment TEXT, reviewer TEXT, updated_at TEXT);""")
     con.close()
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     print(f"EYES review on http://127.0.0.1:{a.port}  (db {a.db})", flush=True)

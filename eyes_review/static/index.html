@@ -108,6 +108,26 @@ tr.click { cursor: pointer; }
 .err { color: var(--bad); }
 .filetable { max-height: 45vh; overflow: auto; }
 
+/* ---------- scenarios */
+#scen { grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); }
+@media (max-width: 1000px) { #scen { grid-template-columns: 220px minmax(0, 1fr); } }
+#scen .item .sid { font-weight: 600; margin-right: 4px; }
+.sc-problem { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 10px 12px; border-radius: 0 6px 6px 0;
+  font-size: 14px; line-height: 1.5; margin: 0 0 14px; }
+.sc-problem .lab { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); font-weight: 600; margin-bottom: 2px; }
+.md { max-width: 980px; }
+.md ul, .md ol { margin: 4px 0 8px; padding-left: 20px; }
+.md li { margin: 2px 0; }
+.md p { margin: 6px 0; }
+.md table { width: auto; max-width: 100%; margin: 6px 0 10px; }
+.md .tblwrap { overflow-x: auto; }
+.md code { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 12px; }
+.sc-note textarea { width: 100%; min-height: 140px; resize: vertical; line-height: 1.5; }
+.sc-nav { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.sc-nav button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+.sc-nav button:disabled { opacity: .4; cursor: default; }
+.sc-nav h2 { font-size: 16px; margin: 0; flex: 1; min-width: 200px; }
+
 /* ---------- device state review */
 :root { --st-off: #c43d3d; --st-idle: #3b4a6b; --st-active: #2e8a57; --st-oi: #9b6bb3; --st-ia: #5fa8c9;
   --st-oa: #d08c3a; --st-u3: #c9c8c2; --st-nolog: #8e7cc3; --st-nologoff: #5b4a8a; }
@@ -159,7 +179,7 @@ input.bl-chk { margin: 0 6px 0 0; vertical-align: -2px; cursor: pointer; }
 <body>
 <header>
   <h1>EYES Review</h1>
-  <nav class="tabs"><button data-tab="review" class="on">Review</button><button data-tab="files">Files</button><button data-tab="states">Device state review</button></nav>
+  <nav class="tabs"><button data-tab="review" class="on">Review</button><button data-tab="files">Files</button><button data-tab="states">Device state review</button><button data-tab="scen">Scenarios</button></nav>
   <div class="stats" id="stats"></div>
 </header>
 
@@ -218,6 +238,14 @@ input.bl-chk { margin: 0 6px 0 0; vertical-align: -2px; cursor: pointer; }
     <div class="list" id="st-list" style="display:none"></div>
   </aside>
   <section class="detail" id="st-detail"><div class="empty">Pick a file on the left.</div></section>
+</main>
+
+<main id="scen">
+  <aside class="side">
+    <div class="small" id="sc-count" style="padding: 8px 10px; border-bottom: 1px solid var(--line)"></div>
+    <div class="list" id="sc-list"></div>
+  </aside>
+  <section class="detail" id="sc-detail"><div class="empty">Loading the scenarios…</div></section>
 </main>
 
 <script>
@@ -649,6 +677,7 @@ function showTab(t) {
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
   document.querySelectorAll("main").forEach(m => m.classList.toggle("on", m.id === t));
   if (t === "files") loadFiles();   // always fresh: verdicts change while reviewing
+  if (t === "scen") loadScenarios();
   if (t === "states") {
     if (!BL.inited) { BL.inited = true; setMode("byfile"); }
     else if (BL.mode === "blocks" && BL.byFile && !BL.fileFilter) loadReviewFiles();
@@ -1473,6 +1502,117 @@ window.addEventListener("resize", () => {
 
 loadSummary().catch(e => $("#stats").innerHTML = `<span class="err">${esc(e.message)}</span>`);
 loadQueue().catch(e => $("#queue").innerHTML = `<div class="err" style="padding:10px">${esc(e.message)}</div>`);
+
+// ---------------- scenarios: docs/scenarios.md, one at a time, with a review comment each
+const SC = {list: [], intro: "", cur: null, timer: null, dirty: false};
+const cap = t => t ? t[0].toUpperCase() + t.slice(1) : t;
+function mdInline(t) {
+  return esc(t).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+}
+function md(src) {
+  const L = src.split("\n"), out = [];
+  let i = 0, stack = [];                       // open lists: {indent, tag}
+  const closeTo = ind => { while (stack.length && stack[stack.length - 1].indent >= ind) out.push(`</li></${stack.pop().tag}>`); };
+  while (i < L.length) {
+    const ln = L[i];
+    if (!ln.trim()) { i++; continue; }
+    if (ln.trim().startsWith("|")) {           // table
+      closeTo(0);
+      const rowsT = [];
+      while (i < L.length && L[i].trim().startsWith("|")) { rowsT.push(L[i].trim()); i++; }
+      const cells = r => r.replace(/^\|/, "").replace(/\|$/, "").split("|").map(c => c.trim());
+      const head = cells(rowsT[0]), body = rowsT.slice(rowsT[1] && /^\|[\s:|-]+\|$/.test(rowsT[1]) ? 2 : 1);
+      out.push(`<div class="tblwrap"><table><thead><tr>${head.map(c => `<th>${mdInline(c)}</th>`).join("")}</tr></thead><tbody>${
+        body.map(r => `<tr>${cells(r).map(c => `<td>${mdInline(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+      continue;
+    }
+    const m = ln.match(/^(\s*)(-|\d+\.)\s+(.*)$/);
+    if (m) {
+      const ind = m[1].length, tag = m[2] === "-" ? "ul" : "ol";
+      const top = stack[stack.length - 1];
+      if (!top || ind > top.indent) { out.push(`<${tag}><li>`); stack.push({indent: ind, tag}); }
+      else { closeTo(ind + 1); const t2 = stack[stack.length - 1];
+        if (t2 && t2.indent === ind && t2.tag === tag) out.push("</li><li>");
+        else { closeTo(ind); out.push(`<${tag}><li>`); stack.push({indent: ind, tag}); } }
+      out.push(mdInline(m[3]));
+      i++; continue;
+    }
+    const ind = ln.match(/^\s*/)[0].length;
+    if (stack.length && ind > 0) { out.push(`<p>${mdInline(ln.trim())}</p>`); i++; continue; }   // continuation inside a list item
+    closeTo(0);
+    out.push(`<p>${mdInline(ln.trim())}</p>`); i++;
+  }
+  closeTo(0);
+  return `<div class="md">${out.join("")}</div>`;
+}
+async function loadScenarios() {
+  try {
+    const d = await api("/api/scenarios");
+    SC.list = d.scenarios; SC.intro = d.intro;
+    renderScList();
+    const want = (location.hash.match(/^#scen-(S\d+)$/) || [])[1];
+    openScenario(SC.list.some(x => x.id === SC.cur) ? SC.cur : want && SC.list.some(x => x.id === want) ? want : SC.list[0] && SC.list[0].id, true);
+  } catch (e) { $("#sc-detail").innerHTML = `<div class="err" style="padding:16px">${esc(e.message)}</div>`; }
+}
+function renderScList() {
+  const n = SC.list.filter(x => x.comment.trim()).length;
+  $("#sc-count").innerHTML = `<b>${SC.list.length}</b> scenarios · <b>${n}</b> with a comment · <a href="#" id="sc-introlink">how scenarios are labelled</a>`;
+  $("#sc-introlink").onclick = e => { e.preventDefault(); openScenario("intro"); };
+  $("#sc-list").innerHTML = SC.list.map(x => `<div class="item ${x.id === SC.cur ? "cur" : ""}" data-id="${x.id}">
+    <div><span class="sid">${x.id}</span>${esc(x.title)}</div>
+    <div>${x.comment.trim() ? `<span class="pill v-keep" title="Commented ${esc(x.updated_at)}">commented</span>` : `<span class="pill">to review</span>`}</div>
+    <div class="sub">${esc(cap(x.problem))}</div></div>`).join("");
+}
+$("#sc-list").onclick = e => { const it = e.target.closest(".item"); if (it) openScenario(it.dataset.id); };
+async function flushComment() {
+  clearTimeout(SC.timer);
+  if (!SC.dirty || !SC.cur || SC.cur === "intro") return;
+  const x = SC.list.find(y => y.id === SC.cur), ta = $("#sc-text");
+  if (!x || !ta) return;
+  SC.dirty = false;
+  const text = ta.value;
+  $("#sc-state").textContent = "Saving…";
+  try {
+    const r = await api("/api/scenario_comment", {method: "POST", body: JSON.stringify({id: x.id, comment: text})});
+    x.comment = text; x.updated_at = r.updated_at;
+    if ($("#sc-text") === ta) $("#sc-state").textContent = r.updated_at ? `Saved ${r.updated_at.replace("T", " ")}` : "Comment cleared";
+    renderScList();
+  } catch (e) { SC.dirty = true; $("#sc-state").innerHTML = `<span class="err">Not saved: ${esc(e.message)}</span>`; }
+}
+async function openScenario(id, noflush) {
+  if (!noflush) await flushComment();
+  if (!id) { $("#sc-detail").innerHTML = `<div class="empty">No scenarios in docs/scenarios.md.</div>`; return; }
+  SC.cur = id; renderScList();
+  if (id === "intro") {
+    $("#sc-detail").innerHTML = `<div class="card">${md(SC.intro.replace(/^# .*\n/, ""))}</div>`;
+    return;
+  }
+  history.replaceState(null, "", `#scen-${id}`);
+  const k = SC.list.findIndex(x => x.id === id), x = SC.list[k];
+  $("#sc-detail").innerHTML = `
+    <div class="sc-nav"><button id="sc-prev" ${k ? "" : "disabled"}>◀ ${k ? SC.list[k - 1].id : ""}</button>
+      <h2>${x.id}. ${esc(x.title)}</h2><span class="small">${k + 1} of ${SC.list.length}</span>
+      <button id="sc-next" ${k < SC.list.length - 1 ? "" : "disabled"}>${k < SC.list.length - 1 ? SC.list[k + 1].id : ""} ▶</button></div>
+    <div class="sc-problem"><span class="lab">The problem it illustrates</span>${mdInline(cap(x.problem) || "(no summary yet)")}</div>
+    <div class="card sc-note"><h2>Your review comment</h2>
+      <textarea id="sc-text" placeholder="Write your comments on ${x.id}: agree with the reading? the label? what to change?">${esc(x.comment)}</textarea>
+      <div class="small" id="sc-state" style="margin-top:4px">${x.updated_at ? `Saved ${esc(x.updated_at.replace("T", " "))}` : "Saved automatically as you type."}</div></div>
+    <div class="card"><h2>The scenario</h2>${md(x.body)}</div>`;
+  $("#sc-prev").onclick = () => k && openScenario(SC.list[k - 1].id);
+  $("#sc-next").onclick = () => k < SC.list.length - 1 && openScenario(SC.list[k + 1].id);
+  const ta = $("#sc-text");
+  ta.oninput = () => { SC.dirty = true; $("#sc-state").textContent = "Editing…"; clearTimeout(SC.timer); SC.timer = setTimeout(flushComment, 800); };
+  ta.onblur = flushComment;
+  $("#sc-detail").scrollTop = 0;
+}
+document.addEventListener("keydown", e => {
+  if (!$("#scen").classList.contains("on") || ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return;
+  const k = SC.list.findIndex(x => x.id === SC.cur);
+  if ((e.key === "j" || e.key === "ArrowDown" || e.key === "ArrowRight") && k < SC.list.length - 1) { e.preventDefault(); openScenario(SC.list[k + 1].id); }
+  if ((e.key === "k" || e.key === "ArrowUp" || e.key === "ArrowLeft") && k > 0) { e.preventDefault(); openScenario(SC.list[k - 1].id); }
+});
+window.addEventListener("beforeunload", e => { if (SC.dirty) { flushComment(); e.preventDefault(); } });
+if (location.hash.startsWith("#scen")) showTab("scen");
 </script>
 </body>
 </html>

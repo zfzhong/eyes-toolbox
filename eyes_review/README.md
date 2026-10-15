@@ -27,3 +27,11 @@ A session is put in the review queue when any of these holds (thresholds in `ing
 keep, truncate (at the start of the silence, or at a chosen event), exclude, unsure.
 `Export CSV` writes every session with its verdict applied (`reviewed_end_utc`,
 `reviewed_duration_s`, `included`).
+
+## Scenarios tab
+
+The representative scenarios (`docs/scenarios.md`, a copy of the project's list) one at a time: the problem each
+illustrates (its "Problem it illustrates" line), the full scenario, and a comment box. Comments save as you type
+into the `scenario_comments` table of the same database, which re-ingesting never touches. `j` / `k` or the
+arrow keys move between scenarios; `#scen-S6` in the address opens one directly. Edit `docs/scenarios.md` and
+reload the page to see changes; no restart needed.
