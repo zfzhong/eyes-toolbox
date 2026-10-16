@@ -193,7 +193,7 @@ input.bl-chk { margin: 0 6px 0 0; vertical-align: -2px; cursor: pointer; }
 <body>
 <header>
   <h1>EYES Review</h1>
-  <nav class="tabs"><button data-tab="review" class="on">Review</button><button data-tab="files">Files</button><button data-tab="states">Device state review</button><button data-tab="scen">Scenarios</button><button data-tab="sch">State chains</button></nav>
+  <nav class="tabs"><button data-tab="review" class="on">Review</button><button data-tab="files">Files</button><button data-tab="states">Device state review</button><button data-tab="scen">Scenarios</button><button data-tab="sch">Power cycles</button></nav>
   <div class="stats" id="stats"></div>
 </header>
 
@@ -1641,7 +1641,7 @@ document.addEventListener("keydown", e => {
 window.addEventListener("beforeunload", e => { if (SC.dirty) { flushComment(); e.preventDefault(); } });
 if (location.hash.startsWith("#scen")) showTab("scen");
 
-// ---------------- state chains: contradictions inside a state chain (two screen-ons / two screen-offs in a row), David 10-16
+// ---------------- Power Cycles: contradictions inside a Power Cycle (two screen-ons / two screen-offs in a row), David 10-16
 const SCH = {items: [], cur: null, timer: null, dirty: false};
 const SCH_V = ["screen-off lost", "screen-on lost", "hidden power cycle", "duplicate screen event", "logging gap", "other", "unsure"];
 const POWER = new Set(["Device Startup", "User Unlocked", "Device Shutdown"]);
@@ -1676,7 +1676,7 @@ function renderSchList() {
       html += `<div class="sc-file">${esc(i.file)} · ${nd}/${n.length} reviewed</div>`; lastFile = i.file;
     }
     html += `<div class="item ${i.id === SCH.cur ? "cur" : ""}" data-id="${esc(i.id)}">
-      <div>${i.kind === "two screen-ons" ? "on → on" : "off → off"} <span class="small">· chain ${i.chain}</span></div>
+      <div>${i.kind === "two screen-ons" ? "on → on" : "off → off"} <span class="small">· Power Cycle ${i.chain}</span></div>
       <div>${i.verdict ? `<span class="pill v-keep">${esc(i.verdict)}</span>` : `<span class="pill">to review</span>`}</div>
       <div class="sub">${esc(fmt(i.t1, i.tz, "mdt").slice(0, 16))} · gap ${schDur(i.gap_s)} · ${i.n_between} events between</div></div>`;
   }
@@ -1727,12 +1727,12 @@ async function openSch(id, noflush) {
       <div class="vbtns">${SCH_V.map(v => `<button data-v="${esc(v)}" class="${it.verdict === v ? "on" : ""}">${esc(v)}</button>`).join("")}</div>
       <textarea id="sch-text" rows="3" style="width:100%" placeholder="What happened here? Which event was lost, or what does the log show?">${esc(it.comment)}</textarea>
       <div class="small" id="sch-state" style="margin-top:4px">${it.updated_at ? `Saved ${esc(it.updated_at.replace("T", " "))}` : "Verdict and comment save as you go."}</div></div>
-    <div class="card"><h2>The state chain</h2><div class="kv">
-      <span>Chain</span><b>#${it.chain} of ${esc(it.file)}</b>
+    <div class="card"><h2>The Power Cycle</h2><div class="kv">
+      <span>Power Cycle</span><b>#${it.chain} of ${esc(it.file)}</b>
       <span>Start</span><span>${startTxt} · ${esc(fmt(it.chain_t0, tz, "mdt"))}</span>
       <span>End</span><span>${endTxt} · ${esc(fmt(it.chain_t1, tz, "mdt"))}</span>
       <span>Length</span><span>${schDur(it.chain_t1 - it.chain_t0)}</span>
-      <span>Contradictions in this chain</span><span>${it.chain_repeats}</span></div></div>
+      <span>Contradictions in this Power Cycle</span><span>${it.chain_repeats}</span></div></div>
     <div class="card"><h2>Events</h2><div class="small" style="margin-bottom:6px">Grey: before ① and after ②. Highlighted: the two screen events. Blue: boot / shutdown markers. Notifications and standby-bucket changes left out.</div>
       <div class="events" style="max-height:none"><table class="sch-ev"><thead><tr><th>Time</th><th class="num">After previous</th><th>Event</th><th>App</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   $("#sch-prev").onclick = () => k > 0 && openSch(vis[k - 1].id);
