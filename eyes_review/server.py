@@ -11,6 +11,7 @@ import argparse
 import csv
 import datetime
 import getpass
+import glob
 import io
 import json
 import os
@@ -63,6 +64,9 @@ def load_raw_events(path):
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 SCENARIOS_MD = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs", "scenarios.md")
 PROBLEM = "- **Problem it illustrates:**"
+# State-chain review (David, 10-16): <A1>/<category>/_review/state_review.json, built by A1/_review/state_review_build.py
+STATE_DIR = os.environ.get("EYES_A1_DIR", os.path.expanduser("~/workspace/screen_time/A1"))
+STATE_VERDICTS = {"screen-off lost", "screen-on lost", "hidden power cycle", "duplicate screen event", "logging gap", "other", "unsure"}
 
 
 def load_scenarios(path=SCENARIOS_MD):
@@ -172,6 +176,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(self.state_block(int(p.rsplit("/", 1)[1]), int(q.get("context", 150))))
             if p.startswith("/api/states/events/"):
                 return self.send(self.state_events(int(p.rsplit("/", 1)[1]), int(q["i0"]), int(q["i1"])))
+            if p == "/api/state_review":
+                return self.send(self.state_review_items())
             if p == "/api/scenarios":
                 return self.send(self.scenarios())
             if p.startswith("/api/states/window/"):
@@ -193,6 +199,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(self.state_ruling(body))
             if path == "/api/states/rulings_bulk":
                 return self.send(self.state_rulings_bulk(body))
+            if path == "/api/state_review_save":
+                return self.send(self.state_review_save(body))
             if path == "/api/scenario_comment":
                 return self.send(self.scenario_comment(body))
             return self.send({"error": "not found"}, code=404)
@@ -617,6 +625,33 @@ class Handler(BaseHTTPRequestHandler):
         con.commit()
         return {"ok": True}
 
+    def state_review_items(self):
+        items = []
+        for fn in sorted(glob.glob(os.path.join(STATE_DIR, "*", "_review", "state_review.json"))):
+            with open(fn) as fh:
+                items += json.load(fh)["items"]
+        con = self.db()
+        saved = {r["id"]: dict(r) for r in con.execute("SELECT * FROM state_chain_review")}
+        for it in items:
+            v = saved.get(it["id"], {})
+            it.update(verdict=v.get("verdict", ""), comment=v.get("comment", ""), updated_at=v.get("updated_at", ""))
+        return {"dir": STATE_DIR, "items": items}
+
+    def state_review_save(self, b):
+        verdict = b.get("verdict") or ""
+        if verdict and verdict not in STATE_VERDICTS:
+            return {"error": f"unknown verdict {verdict}"}
+        con = self.db()
+        if not verdict and not (b.get("comment") or "").strip():
+            con.execute("DELETE FROM state_chain_review WHERE id = ?", (b["id"],)); con.commit()
+            return {"ok": True, "updated_at": ""}
+        now = datetime.datetime.now().isoformat(timespec="seconds")
+        con.execute("""INSERT INTO state_chain_review VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET verdict=excluded.verdict,
+            comment=excluded.comment, reviewer=excluded.reviewer, updated_at=excluded.updated_at""",
+                    (b["id"], verdict, b.get("comment") or "", getpass.getuser(), now))
+        con.commit()
+        return {"ok": True, "updated_at": now}
+
     def scenarios(self):
         d = load_scenarios()
         con = self.db()
@@ -704,7 +739,8 @@ def main():
         CREATE TABLE IF NOT EXISTS state_file_review (stem TEXT PRIMARY KEY, status TEXT, note TEXT, reviewer TEXT, updated_at TEXT);
         CREATE TABLE IF NOT EXISTS state_rulings (stem TEXT, start REAL, end REAL, label TEXT, note TEXT, reviewer TEXT,
             updated_at TEXT, PRIMARY KEY (stem, start));
-        CREATE TABLE IF NOT EXISTS scenario_comments (sid TEXT PRIMARY KEY, comment TEXT, reviewer TEXT, updated_at TEXT);""")
+        CREATE TABLE IF NOT EXISTS scenario_comments (sid TEXT PRIMARY KEY, comment TEXT, reviewer TEXT, updated_at TEXT);
+        CREATE TABLE IF NOT EXISTS state_chain_review (id TEXT PRIMARY KEY, verdict TEXT, comment TEXT, reviewer TEXT, updated_at TEXT);""")
     con.close()
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     print(f"EYES review on http://127.0.0.1:{a.port}  (db {a.db})", flush=True)

@@ -128,6 +128,20 @@ tr.click { cursor: pointer; }
 .sc-nav button:disabled { opacity: .4; cursor: default; }
 .sc-nav h2 { font-size: 16px; margin: 0; flex: 1; min-width: 200px; }
 
+/* ---------- state chain review */
+#sch { grid-template-columns: minmax(240px, 330px) minmax(0, 1fr); }
+@media (max-width: 1000px) { #sch { grid-template-columns: 220px minmax(0, 1fr); } }
+.sc-file { padding: 6px 10px; font-size: 12px; font-weight: 600; color: var(--quiet); background: var(--bg); border-bottom: 1px solid var(--line); position: sticky; top: 0; }
+table.sch-ev td { padding: 3px 8px; }
+table.sch-ev tr.r-before td, table.sch-ev tr.r-after td { color: var(--quiet); }
+table.sch-ev tr.r-first td, table.sch-ev tr.r-second td { background: var(--warn-soft); font-weight: 600; }
+table.sch-ev tr.r-power td { background: var(--accent-soft); }
+.vbtns { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 8px; }
+.vbtns button { font: inherit; font-size: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 14px; padding: 3px 10px; cursor: pointer; }
+.vbtns button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; font-size: 13px; }
+.kv b { font-weight: 600; }
+
 /* ---------- device state review */
 :root { --st-off: #c43d3d; --st-idle: #3b4a6b; --st-active: #2e8a57; --st-oi: #9b6bb3; --st-ia: #5fa8c9;
   --st-oa: #d08c3a; --st-u3: #c9c8c2; --st-nolog: #8e7cc3; --st-nologoff: #5b4a8a; }
@@ -179,7 +193,7 @@ input.bl-chk { margin: 0 6px 0 0; vertical-align: -2px; cursor: pointer; }
 <body>
 <header>
   <h1>EYES Review</h1>
-  <nav class="tabs"><button data-tab="review" class="on">Review</button><button data-tab="files">Files</button><button data-tab="states">Device state review</button><button data-tab="scen">Scenarios</button></nav>
+  <nav class="tabs"><button data-tab="review" class="on">Review</button><button data-tab="files">Files</button><button data-tab="states">Device state review</button><button data-tab="scen">Scenarios</button><button data-tab="sch">State chains</button></nav>
   <div class="stats" id="stats"></div>
 </header>
 
@@ -238,6 +252,18 @@ input.bl-chk { margin: 0 6px 0 0; vertical-align: -2px; cursor: pointer; }
     <div class="list" id="st-list" style="display:none"></div>
   </aside>
   <section class="detail" id="st-detail"><div class="empty">Pick a file on the left.</div></section>
+</main>
+
+<main id="sch">
+  <aside class="side">
+    <div class="filters">
+      <select id="sch-folder"></select>
+      <select id="sch-status"><option value="todo">To review</option><option value="done">Reviewed</option><option value="all" selected>All</option></select>
+    </div>
+    <div class="small" id="sch-count" style="padding: 6px 10px; border-bottom: 1px solid var(--line)"></div>
+    <div class="list" id="sch-list"></div>
+  </aside>
+  <section class="detail" id="sch-detail"><div class="empty">Loading…</div></section>
 </main>
 
 <main id="scen">
@@ -678,6 +704,7 @@ function showTab(t) {
   document.querySelectorAll("main").forEach(m => m.classList.toggle("on", m.id === t));
   if (t === "files") loadFiles();   // always fresh: verdicts change while reviewing
   if (t === "scen") loadScenarios();
+  if (t === "sch") loadStateReview();
   if (t === "states") {
     if (!BL.inited) { BL.inited = true; setMode("byfile"); }
     else if (BL.mode === "blocks" && BL.byFile && !BL.fileFilter) loadReviewFiles();
@@ -1613,6 +1640,121 @@ document.addEventListener("keydown", e => {
 });
 window.addEventListener("beforeunload", e => { if (SC.dirty) { flushComment(); e.preventDefault(); } });
 if (location.hash.startsWith("#scen")) showTab("scen");
+
+// ---------------- state chains: contradictions inside a state chain (two screen-ons / two screen-offs in a row), David 10-16
+const SCH = {items: [], cur: null, timer: null, dirty: false};
+const SCH_V = ["screen-off lost", "screen-on lost", "hidden power cycle", "duplicate screen event", "logging gap", "other", "unsure"];
+const POWER = new Set(["Device Startup", "User Unlocked", "Device Shutdown"]);
+function schDur(s) { s = Math.abs(s); return s < 60 ? s.toFixed(1) + " s" : s < 3600 ? (s / 60).toFixed(1) + " min" : s < 86400 ? (s / 3600).toFixed(1) + " h" : (s / 86400).toFixed(1) + " days"; }
+async function loadStateReview() {
+  try {
+    const d = await api("/api/state_review");
+    SCH.items = d.items;
+    const folders = [...new Set(d.items.map(i => i.folder))];
+    const sel = $("#sch-folder"), keep = sel.value;
+    sel.innerHTML = folders.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join("");
+    if (folders.includes(keep)) sel.value = keep; else if (folders.includes("kids_tablet_android")) sel.value = "kids_tablet_android";
+    if (!d.items.length) { $("#sch-detail").innerHTML = `<div class="empty">No state_review.json under ${esc(d.dir)}. Run A1/_review/state_review_build.py first.</div>`; return; }
+    renderSchList();
+    const want = (location.hash.match(/^#sch-(.+)$/) || [])[1];
+    const vis = schVisible();
+    openSch(SCH.cur && SCH.items.some(i => i.id === SCH.cur) ? SCH.cur : want && SCH.items.some(i => i.id === decodeURIComponent(want)) ? decodeURIComponent(want) : vis[0] && vis[0].id, true);
+  } catch (e) { $("#sch-detail").innerHTML = `<div class="err" style="padding:16px">${esc(e.message)}</div>`; }
+}
+function schVisible() {
+  const f = $("#sch-folder").value, st = $("#sch-status").value;
+  return SCH.items.filter(i => i.folder === f && (st === "all" || (st === "done" ? i.verdict : !i.verdict)));
+}
+function renderSchList() {
+  const vis = schVisible(), all = SCH.items.filter(i => i.folder === $("#sch-folder").value);
+  const done = all.filter(i => i.verdict).length;
+  $("#sch-count").innerHTML = `<b>${all.length}</b> contradictions in <b>${new Set(all.map(i => i.file)).size}</b> files · <b>${done}</b> reviewed`;
+  let html = "", lastFile = null;
+  for (const i of vis) {
+    if (i.file !== lastFile) {
+      const n = all.filter(x => x.file === i.file), nd = n.filter(x => x.verdict).length;
+      html += `<div class="sc-file">${esc(i.file)} · ${nd}/${n.length} reviewed</div>`; lastFile = i.file;
+    }
+    html += `<div class="item ${i.id === SCH.cur ? "cur" : ""}" data-id="${esc(i.id)}">
+      <div>${i.kind === "two screen-ons" ? "on → on" : "off → off"} <span class="small">· chain ${i.chain}</span></div>
+      <div>${i.verdict ? `<span class="pill v-keep">${esc(i.verdict)}</span>` : `<span class="pill">to review</span>`}</div>
+      <div class="sub">${esc(fmt(i.t1, i.tz, "mdt").slice(0, 16))} · gap ${schDur(i.gap_s)} · ${i.n_between} events between</div></div>`;
+  }
+  $("#sch-list").innerHTML = html || `<div class="empty">Nothing in this list.</div>`;
+}
+$("#sch-list").onclick = e => { const it = e.target.closest(".item"); if (it) openSch(it.dataset.id); };
+["#sch-folder", "#sch-status"].forEach(id => $(id).onchange = () => { renderSchList(); const v = schVisible(); if (v[0]) openSch(v[0].id); });
+async function schSave(it, patch) {
+  Object.assign(it, patch);
+  $("#sch-state").textContent = "Saving…";
+  try {
+    const r = await api("/api/state_review_save", {method: "POST", body: JSON.stringify({id: it.id, verdict: it.verdict, comment: it.comment})});
+    it.updated_at = r.updated_at; SCH.dirty = false;
+    if ($("#sch-state")) $("#sch-state").textContent = r.updated_at ? `Saved ${r.updated_at.replace("T", " ")}` : "Cleared";
+    renderSchList();
+  } catch (e) { $("#sch-state").innerHTML = `<span class="err">Not saved: ${esc(e.message)}</span>`; }
+}
+async function schFlush() {
+  clearTimeout(SCH.timer);
+  if (!SCH.dirty) return;
+  const it = SCH.items.find(i => i.id === SCH.cur), ta = $("#sch-text");
+  if (it && ta) await schSave(it, {comment: ta.value});
+}
+async function openSch(id, noflush) {
+  if (!noflush) await schFlush();
+  const it = SCH.items.find(i => i.id === id);
+  if (!it) { $("#sch-detail").innerHTML = `<div class="empty">Pick a contradiction on the left.</div>`; return; }
+  SCH.cur = id; renderSchList(); history.replaceState(null, "", "#sch-" + encodeURIComponent(id));
+  const vis = schVisible(), k = vis.findIndex(i => i.id === id), tz = it.tz;
+  const startTxt = it.chain_start === "Bootup" ? "Bootup" : `LogStart <span class="small">(${esc(it.chain_start_by === "file start" ? "start of the file" : "after a shutdown, no boot logged")})</span>`;
+  const endTxt = it.chain_end === "Shutdown" ? "Shutdown" : `LogEnd <span class="small">(${esc(it.chain_end_by === "file end" ? "end of the file" : "before a boot, no shutdown logged")})</span>`;
+  let prev = null;
+  const rows = it.events.map(e => {
+    if (e[0] === null) return `<tr><td colspan="4" class="small" style="text-align:center">${esc(e[1])}</td></tr>`;
+    const d = prev === null ? "" : schDur(e[0] - prev); prev = e[0];
+    const cls = "r-" + e[3] + (POWER.has(e[1]) ? " r-power" : "");
+    return `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${d}</td><td>${esc(e[1])}${e[3] === "first" ? " ①" : e[3] === "second" ? " ②" : ""}</td><td>${esc(e[2])}</td></tr>`;
+  }).join("");
+  $("#sch-detail").innerHTML = `
+    <div class="sc-nav"><button id="sch-prev" ${k > 0 ? "" : "disabled"}>◀</button>
+      <h2>${esc(it.file)} · ${it.kind === "two screen-ons" ? "two screen-ons in a row" : "two screen-offs in a row"}</h2>
+      <span class="small">${k + 1} of ${vis.length}</span><button id="sch-next" ${k < vis.length - 1 ? "" : "disabled"}>▶</button></div>
+    <div class="sc-problem"><span class="lab">The contradiction</span>${it.kind === "two screen-ons"
+      ? "The screen came on twice with no screen-off between: either a screen-off was lost, or the device logged the screen-on twice."
+      : "The screen went off twice with no screen-on between: either a screen-on was lost, or the device logged the screen-off twice."}
+      ① ${esc(fmt(it.t1, tz, "mdt"))} → ② ${esc(fmt(it.t2, tz, "mdt"))}, ${schDur(it.gap_s)} apart, ${it.n_between} events between. Times in ${esc(tz)}.</div>
+    <div class="card"><h2>Your verdict</h2>
+      <div class="vbtns">${SCH_V.map(v => `<button data-v="${esc(v)}" class="${it.verdict === v ? "on" : ""}">${esc(v)}</button>`).join("")}</div>
+      <textarea id="sch-text" rows="3" style="width:100%" placeholder="What happened here? Which event was lost, or what does the log show?">${esc(it.comment)}</textarea>
+      <div class="small" id="sch-state" style="margin-top:4px">${it.updated_at ? `Saved ${esc(it.updated_at.replace("T", " "))}` : "Verdict and comment save as you go."}</div></div>
+    <div class="card"><h2>The state chain</h2><div class="kv">
+      <span>Chain</span><b>#${it.chain} of ${esc(it.file)}</b>
+      <span>Start</span><span>${startTxt} · ${esc(fmt(it.chain_t0, tz, "mdt"))}</span>
+      <span>End</span><span>${endTxt} · ${esc(fmt(it.chain_t1, tz, "mdt"))}</span>
+      <span>Length</span><span>${schDur(it.chain_t1 - it.chain_t0)}</span>
+      <span>Contradictions in this chain</span><span>${it.chain_repeats}</span></div></div>
+    <div class="card"><h2>Events</h2><div class="small" style="margin-bottom:6px">Grey: before ① and after ②. Highlighted: the two screen events. Blue: boot / shutdown markers. Notifications and standby-bucket changes left out.</div>
+      <div class="events" style="max-height:none"><table class="sch-ev"><thead><tr><th>Time</th><th class="num">After previous</th><th>Event</th><th>App</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  $("#sch-prev").onclick = () => k > 0 && openSch(vis[k - 1].id);
+  $("#sch-next").onclick = () => k < vis.length - 1 && openSch(vis[k + 1].id);
+  document.querySelectorAll("#sch-detail .vbtns button").forEach(b => b.onclick = () => {
+    const v = b.dataset.v === it.verdict ? "" : b.dataset.v;
+    schSave(it, {verdict: v, comment: $("#sch-text").value});
+    document.querySelectorAll("#sch-detail .vbtns button").forEach(x => x.classList.toggle("on", x.dataset.v === v));
+  });
+  const ta = $("#sch-text");
+  ta.oninput = () => { SCH.dirty = true; $("#sch-state").textContent = "Editing…"; clearTimeout(SCH.timer); SCH.timer = setTimeout(schFlush, 800); };
+  ta.onblur = schFlush;
+  $("#sch-detail").scrollTop = 0;
+}
+document.addEventListener("keydown", e => {
+  if (!$("#sch").classList.contains("on") || ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return;
+  const vis = schVisible(), k = vis.findIndex(i => i.id === SCH.cur);
+  if ((e.key === "j" || e.key === "ArrowDown" || e.key === "ArrowRight") && k < vis.length - 1) { e.preventDefault(); openSch(vis[k + 1].id); }
+  if ((e.key === "k" || e.key === "ArrowUp" || e.key === "ArrowLeft") && k > 0) { e.preventDefault(); openSch(vis[k - 1].id); }
+});
+window.addEventListener("beforeunload", () => { if (SCH.dirty) schFlush(); });
+if (location.hash.startsWith("#sch")) showTab("sch");
 </script>
 </body>
 </html>
