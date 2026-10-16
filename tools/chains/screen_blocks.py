@@ -6,6 +6,8 @@ Lost blocks (David, 10-16: not "Unknown", "since we know something: some events 
 contradicts itself nothing is placed, and the block lists the events that must be missing (column lost) (David, 10-16: "In theory, we dont know what happened
 between two ScreenOn events. We are sure: some events got lost. They might be screen off, they might be shutdown and then
 bootup."):
+  (10-16) the boundary is where the app-level construction fails (run_until_fail), chain after chain, not the end of the
+  first chain.
   two Screen Interactive in a row      lost: Screen Non-interactive (and the Paused / Stopped of the app still in front)
                                        ScreenOn from the first up to the last event of the app chain that started after it
                                        (end: EventLost - the app on screen certainly lasted that long), then Unknown to the
@@ -64,6 +66,34 @@ def app_chains(idx, nm, pk):
         i = j
     return out
 
+def run_until_fail(idx, nm, pk, lead=("Activity Stopped",)):
+    """David, 10-16: "we construct the app level logical chain until we fail". Walk the app events idx in order, chain
+    after chain (a chain that ended properly may be followed by a new Resumed), and return how many events follow
+    logically before the first one that does not. Same rules as app_chains. Before the first Resumed, the events in
+    lead are accepted: their screens began before idx (a Stopped of a screen Paused earlier; going back from a
+    screen-off, also a Paused of an app Resumed earlier). Later, a Stopped of an app not yet seen in idx is accepted too.
+    (Its Paused came before idx.)"""
+    front = pending = None; waiting = {}; seen_r = False; seen = set()
+    for n, k in enumerate(idx):
+        e, x = nm[k], pk[k]; ok = False
+        if not seen_r and e in lead:
+            if e == "Activity Paused": waiting[x] = waiting.get(x, 0) + 1
+            seen.add(x); continue
+        if e == "Activity Resumed":
+            seen_r = True
+            if pending is None:
+                if front is not None: pending, front, ok = front, x, True
+                else: front, ok = x, True
+        elif e == "Activity Paused":
+            if x == pending: pending = None; waiting[x] = waiting.get(x, 0) + 1; ok = True
+            elif x == front: front = None; waiting[x] = waiting.get(x, 0) + 1; ok = True
+        elif e == "Activity Stopped":
+            if waiting.get(x, 0) > 0: waiting[x] -= 1; ok = True
+            elif x not in seen: ok = True               # its Paused came before idx
+        if not ok: return n
+        seen.add(x)
+    return len(idx)
+
 def chain_end_front(idx, nm, pk):
     """The app still in front (Resumed, not Paused) after the events idx, in order; None if none."""
     front = pending = None
@@ -103,9 +133,11 @@ def blocks_of(t, nm, pk, cyc, ci):
         elif ea == ON:
             # David, 10-16 (4075_C01, Minecraft): the Paused is lost, "we dont know where it ends ... But for sure, it last till
             # [the last event of the chain]. That's the only thing we can tell." ScreenOn up to the last app event, then Unknown.
-            ch = app_chains([k for k in range(a_ + 1, b_) if nm[k] in APP], nm, pk)
-            if ch:                                      # the last event of the chain that started after the screen-on
-                end = ch[0][1]
+            ai = [k for k in range(a_ + 1, b_) if nm[k] in APP]
+            n_ok = run_until_fail(ai, nm, pk)           # David, 10-16: construct until we fail; the last event that
+            ch = n_ok > 0                               # still follows ends the ScreenOn and starts EventLost
+            if ch:
+                end = ai[n_ok - 1]
                 fr = chain_end_front([k for k in range(a_ + 1, end + 1) if nm[k] in APP], nm, pk)
                 lost = (f"Activity Paused {fr}, Activity Stopped {fr}, " if fr else "") + "Screen Non-interactive"
                 blk("ScreenOn", a_, ON, end, "EventLost", "two Screen Interactive")
@@ -114,9 +146,12 @@ def blocks_of(t, nm, pk, cyc, ci):
                 blk("EventLost", a_, ON, b_, ON, "two Screen Interactive, no app chain between", "Screen Non-interactive")
         else:
             # mirror: the screen came on somewhere before the first app event; from that event it is on up to the screen-off
-            ch = app_chains([k for k in range(a_ + 1, b_) if nm[k] in APP], nm, pk)
-            if ch:                                      # the first event of the chain that reaches the screen-off
-                start = ch[-1][0]
+            ai = [k for k in range(a_ + 1, b_) if nm[k] in APP]
+            s0 = len(ai)                                # mirror: going back from the second screen-off, the earliest
+            while s0 > 0 and run_until_fail(ai[s0 - 1:], nm, pk, ("Activity Paused", "Activity Stopped")) == len(ai) - s0 + 1: s0 -= 1   # event from which all follows
+            ch = s0 < len(ai)
+            if ch:
+                start = ai[s0]
                 lost = "Screen Interactive" + (f", Activity Resumed {pk[start]}" if nm[start] != "Activity Resumed" else "")
                 blk("EventLost", a_, OFF, start, "EventLost", "two Screen Non-interactive", lost)
                 blk("ScreenOn", start, "EventLost", b_, OFF, "two Screen Non-interactive")
