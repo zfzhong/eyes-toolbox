@@ -16,3 +16,10 @@ Scripts for the chain method (project doc claude/chain-method-1015.md), run on a
 Order: power_cycles.py, then state_review_build.py; review in the app (`make review`, tab Power cycles).
 
 Terms (David, 10-16): file -> Power Cycles (Bootup or LogStart ... Shutdown or LogEnd; only Bootup / Shutdown are power-on / power-off) -> screen sessions -> triplets (Resumed -> Paused -> Stopped) -> app chains.
+
+## Lost blocks (10-16)
+David: not "Unknown", "since we know something: some events (likely Paused) are lost". Where the log contradicts itself,
+screen_blocks.py writes a **Lost** block whose column `lost` lists the events that must be missing:
+two Screen Interactive -> Screen Non-interactive (+ Paused/Stopped of the app still in front); two Screen Non-interactive ->
+Screen Interactive (+ Resumed of an app whose chain begins with Paused); a boot signature inside adds "or Device Shutdown + Bootup".
+"Unknown" remains only before logging began (LogStart, before the first screen event).

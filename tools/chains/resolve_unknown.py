@@ -1,16 +1,16 @@
-"""resolve_unknown.py <category folder>: use the app activity inside each Unknown block to tell what was lost (David, 10-16:
+"""resolve_unknown.py <category folder>: use the app activity inside each Lost block (formerly "Unknown") to tell what was lost (David, 10-16:
 "To identify the Unknown block, we need activity level events to help"). Event order only. Run screen_blocks.py first.
-Inside an Unknown block, the app triplet chains (chain_logic rules) are built from the block's app events:
+Inside a Lost block, the app triplet chains (chain_logic rules) are built from the block's app events:
   an app chain (Resumed ... Paused)                       an app in front: the screen was on            -> ScreenOn
   a chain that ends properly (last app Paused + Stopped,  what Android logs at a screen-off: the lost
     nothing Resumed after it)                             screen-off is there, the screen is off until  -> ScreenOff
                                                           the next chain starts (the lost screen-on)
   a boot signature (Settings Paused, no Resumed:          a power cycle was lost there                  -> PowerLost
     FallbackHome, pattern A1)
-  a chain that fails (no proper end, a Paused of an app   the stretch stays                             -> Unknown
+  a chain that fails (no proper end, a Paused of an app   the stretch stays                             -> Lost
     not in front ...)
 The block's own bounding events: two Screen Interactive -> it starts on; two Screen Non-interactive -> it starts off.
-Writes <folder>/_review/unknown_resolved.csv (one row per part) and prints how much of the Unknown time is explained."""
+Writes <folder>/_review/unknown_resolved.csv (one row per part) and prints how much of the Lost time is explained."""
 import sys, os, glob, importlib.util
 TB = os.path.expanduser("~/workspace/eyes-toolbox")
 if not os.path.isdir(TB): TB = os.path.expanduser("~/mnt/eyes-toolbox")
@@ -66,7 +66,7 @@ for f in sorted(glob.glob(os.path.join(folder, "processed", "*_sorted_uniq_reord
     pid = os.path.basename(f).split("_Chronicle")[0]
     bf = os.path.join(out, f"screen_blocks_{pid}.csv")
     if not os.path.exists(bf): continue
-    U = pd.read_csv(bf); U = U[(U.block == "Unknown") & U.why.fillna("").astype(str).str.startswith("two")]
+    U = pd.read_csv(bf); U = U[(U.block == "Lost") & U.why.fillna("").astype(str).str.startswith("two")]
     if U.empty: continue
     ev = ds.load_events(f); t = ev.t.to_numpy(); nm = ev.name.to_numpy(); pk = ev.app_package_name.astype(str).to_numpy()
     for bi, b in U.iterrows():
@@ -76,22 +76,22 @@ for f in sorted(glob.glob(os.path.join(folder, "processed", "*_sorted_uniq_reord
         parts = []; pos = b.start_t; state = "ScreenOn" if b.start_by == "Screen Interactive" else "ScreenOff"; known = True
         for c in ch:
             if c["boot"]:
-                parts.append(("PowerLost" if known else "Unknown", pos, c["t0"])); pos = c["t0"]; state = "ScreenOn"; known = True
+                parts.append(("PowerLost" if known else "Lost", pos, c["t0"])); pos = c["t0"]; state = "ScreenOn"; known = True
                 continue
             if c["start"]:
                 # the screen was off from the previous proper end (or the block start if it starts off) to this chain's start
-                parts.append((state if known else "Unknown", pos, c["t0"]))
+                parts.append((state if known else "Lost", pos, c["t0"]))
             else:
-                parts.append(("Unknown", pos, c["t0"]))
+                parts.append(("Lost", pos, c["t0"]))
             parts.append(("ScreenOn", c["t0"], c["t1"]))
             pos = c["t1"]; known = c["end"]; state = "ScreenOff"
         last = "ScreenOn" if b.end_by == "Screen Non-interactive" else "ScreenOff"
-        parts.append(((state if state == last or state == "ScreenOff" else "Unknown") if known else "Unknown", pos, b.end_t))
+        parts.append(((state if state == last or state == "ScreenOff" else "Lost") if known else "Lost", pos, b.end_t))
         for kind, a_, z_ in parts:
             if z_ > a_: rows.append(dict(file=pid, block_start=b.start_t, why=b.why, part=kind, start_t=a_, end_t=z_, h=(z_ - a_) / 3600))
 R = pd.DataFrame(rows); R.to_csv(os.path.join(out, "unknown_resolved.csv"), index=False)
 tot = R.groupby("part").h.sum(); T = tot.sum()
-print("Unknown time (contradictions) explained by app activity:", {k: f"{v:,.0f} h ({100 * v / T:.1f}%)" for k, v in tot.items()})
-blk = R.groupby(["file", "block_start"]).apply(lambda g: (g.part == "Unknown").sum() == 0)
-print(f"Unknown blocks fully explained: {int(blk.sum())} of {len(blk)}")
-print("why the rest stays Unknown (parts):", R[R.part == "Unknown"].groupby("why").h.agg(["size", "sum"]).round(0).to_dict("index"))
+print("Lost time (contradictions) explained by app activity:", {k: f"{v:,.0f} h ({100 * v / T:.1f}%)" for k, v in tot.items()})
+blk = R.groupby(["file", "block_start"]).apply(lambda g: (g.part == "Lost").sum() == 0)
+print(f"Lost blocks fully explained: {int(blk.sum())} of {len(blk)}")
+print("why the rest stays Lost (parts):", R[R.part == "Lost"].groupby("why").h.agg(["size", "sum"]).round(0).to_dict("index"))
