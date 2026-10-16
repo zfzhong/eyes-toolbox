@@ -136,6 +136,7 @@ table.sch-ev td { padding: 3px 8px; }
 table.sch-ev tr.r-before td, table.sch-ev tr.r-after td { color: var(--quiet); }
 table.sch-ev tr.r-first td, table.sch-ev tr.r-second td { background: var(--warn-soft); font-weight: 600; }
 table.sch-ev tr.r-power td { background: var(--accent-soft); }
+table.sch-ev tr.r-edge td { font-weight: 600; border-top: 1px solid var(--line); }
 .vbtns { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 8px; }
 .vbtns button { font: inherit; font-size: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 14px; padding: 3px 10px; cursor: pointer; }
 .vbtns button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
@@ -258,6 +259,7 @@ input.bl-chk { margin: 0 6px 0 0; vertical-align: -2px; cursor: pointer; }
   <aside class="side">
     <div class="filters">
       <select id="sch-folder"></select>
+      <select id="sch-list-kind"><option value="repeat">Screen repeats</option><option value="block">App-chain failures in blocks</option></select>
       <select id="sch-status"><option value="todo">To review</option><option value="done">Reviewed</option><option value="all" selected>All</option></select>
     </div>
     <div class="small" id="sch-count" style="padding: 6px 10px; border-bottom: 1px solid var(--line)"></div>
@@ -1662,13 +1664,16 @@ async function loadStateReview() {
   } catch (e) { $("#sch-detail").innerHTML = `<div class="err" style="padding:16px">${esc(e.message)}</div>`; }
 }
 function schVisible() {
-  const f = $("#sch-folder").value, st = $("#sch-status").value;
-  return SCH.items.filter(i => i.folder === f && (st === "all" || (st === "done" ? i.verdict : !i.verdict)));
+  const f = $("#sch-folder").value, st = $("#sch-status").value, lk = $("#sch-list-kind").value;
+  return SCH.items.filter(i => i.folder === f && (i.list || "repeat") === lk && (st === "all" || (st === "done" ? i.verdict : !i.verdict)));
 }
 function renderSchList() {
-  const vis = schVisible(), all = SCH.items.filter(i => i.folder === $("#sch-folder").value);
+  const lk = $("#sch-list-kind").value, vis = schVisible(), all = SCH.items.filter(i => i.folder === $("#sch-folder").value && (i.list || "repeat") === lk);
   const done = all.filter(i => i.verdict).length;
-  $("#sch-count").innerHTML = `<b>${all.length}</b> contradictions in <b>${new Set(all.map(i => i.file)).size}</b> files · <b>${done}</b> reviewed`;
+  $("#sch-count").innerHTML = lk === "block"
+    ? `<b>${all.length}</b> sampled blocks (up to 12 per block type × failure) in <b>${new Set(all.map(i => i.file)).size}</b> files · <b>${done}</b> reviewed`
+    : `<b>${all.length}</b> contradictions in <b>${new Set(all.map(i => i.file)).size}</b> files · <b>${done}</b> reviewed`;
+  if (lk === "block") { renderBlkList(vis); return; }
   let html = "", lastFile = null;
   for (const i of vis) {
     if (i.file !== lastFile) {
@@ -1682,8 +1687,26 @@ function renderSchList() {
   }
   $("#sch-list").innerHTML = html || `<div class="empty">Nothing in this list.</div>`;
 }
+function renderBlkList(vis) {
+  let html = "", last = null;
+  for (const i of vis) {
+    if (i.kind !== last) { html += `<div class="sc-file">${esc(i.kind)} · ${i.n_kind_total.toLocaleString()} in all</div>`; last = i.kind; }
+    html += `<div class="item ${i.id === SCH.cur ? "cur" : ""}" data-id="${esc(i.id)}">
+      <div>${esc(i.file)} <span class="small">· Power Cycle ${i.chain}</span></div>
+      <div>${i.verdict ? `<span class="pill v-keep">${esc(i.verdict)}</span>` : `<span class="pill">to review</span>`}</div>
+      <div class="sub">${esc(fmt(i.t1, i.tz, "mdt").slice(0, 16))} · ${i.n_fail} failure${i.n_fail > 1 ? "s" : ""} · block ${schDur(i.gap_s)}</div></div>`;
+  }
+  $("#sch-list").innerHTML = html || `<div class="empty">Nothing in this list. Run block_fails.py and block_review_build.py.</div>`;
+}
+const BLK_WHY = {
+  "resumed, previous app never Paused": "An app Resumed while the app before it was still waiting for its Paused, and another Resumed came: that Paused is missing.",
+  "paused, app not in front": "An app Paused that was not Resumed in this run: its Resumed is missing, or it was in front from before the block.",
+  "stopped in front, no Paused": "The app in front was Stopped with no Paused: a kill (force-stop, crash; C8) or a lost Paused.",
+  "stopped twice": "A Stopped with no Paused-not-Stopped screen of that app: a lost Paused, or a duplicate Stopped.",
+  "resumed in ScreenOff": "An app Resumed while the screen was off: a lost screen-on, an app over the lock screen (alarm, call), or a background launch."};
+const BLK_V = ["Paused lost", "Resumed lost", "Stopped lost", "kill", "screen-on lost", "app over lock screen", "background launch", "duplicate event", "device-specific", "logging gap", "other", "unsure"];
 $("#sch-list").onclick = e => { const it = e.target.closest(".item"); if (it) openSch(it.dataset.id); };
-["#sch-folder", "#sch-status"].forEach(id => $(id).onchange = () => { renderSchList(); const v = schVisible(); if (v[0]) openSch(v[0].id); });
+["#sch-folder", "#sch-status", "#sch-list-kind"].forEach(id => $(id).onchange = () => { renderSchList(); const v = schVisible(); if (v[0]) openSch(v[0].id); });
 async function schSave(it, patch) {
   Object.assign(it, patch);
   $("#sch-state").textContent = "Saving…";
@@ -1706,6 +1729,7 @@ async function openSch(id, noflush) {
   if (!it) { $("#sch-detail").innerHTML = `<div class="empty">Pick a contradiction on the left.</div>`; return; }
   SCH.cur = id; renderSchList(); history.replaceState(null, "", "#sch-" + encodeURIComponent(id));
   const vis = schVisible(), k = vis.findIndex(i => i.id === id), tz = it.tz;
+  if (it.list === "block") return openBlk(it, k, vis);
   const startTxt = it.chain_start === "Bootup" ? "Bootup" : `LogStart <span class="small">(${esc(it.chain_start_by === "file start" ? "start of the file" : "after a shutdown, no boot logged")})</span>`;
   const endTxt = it.chain_end === "Shutdown" ? "Shutdown" : `LogEnd <span class="small">(${esc(it.chain_end_by === "file end" ? "end of the file" : "before a boot, no shutdown logged")})</span>`;
   let prev = null;
@@ -1734,6 +1758,46 @@ async function openSch(id, noflush) {
       <span>Length</span><span>${schDur(it.chain_t1 - it.chain_t0)}</span>
       <span>Contradictions in this Power Cycle</span><span>${it.chain_repeats}</span></div></div>
     <div class="card"><h2>Events</h2><div class="small" style="margin-bottom:6px">Grey: before ① and after ②. Highlighted: the two screen events. Blue: boot / shutdown markers. Notifications and standby-bucket changes left out.</div>
+      <div class="events" style="max-height:none"><table class="sch-ev"><thead><tr><th>Time</th><th class="num">After previous</th><th>Event</th><th>App</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  $("#sch-prev").onclick = () => k > 0 && openSch(vis[k - 1].id);
+  $("#sch-next").onclick = () => k < vis.length - 1 && openSch(vis[k + 1].id);
+  document.querySelectorAll("#sch-detail .vbtns button").forEach(b => b.onclick = () => {
+    const v = b.dataset.v === it.verdict ? "" : b.dataset.v;
+    schSave(it, {verdict: v, comment: $("#sch-text").value});
+    document.querySelectorAll("#sch-detail .vbtns button").forEach(x => x.classList.toggle("on", x.dataset.v === v));
+  });
+  const ta = $("#sch-text");
+  ta.oninput = () => { SCH.dirty = true; $("#sch-state").textContent = "Editing…"; clearTimeout(SCH.timer); SCH.timer = setTimeout(schFlush, 800); };
+  ta.onblur = schFlush;
+  $("#sch-detail").scrollTop = 0;
+}
+function openBlk(it, k, vis) {
+  const tz = it.tz; let prev = null;
+  const rows = it.events.map(e => {
+    if (e[0] === null) return `<tr><td colspan="4" class="small" style="text-align:center">${esc(e[1])}</td></tr>`;
+    const d = prev === null ? "" : schDur(e[0] - prev); prev = e[0];
+    const edge = Math.abs(e[0] - it.block_t0) < 1e-3 || Math.abs(e[0] - it.block_t1) < 1e-3;
+    const cls = "r-" + e[3] + (POWER.has(e[1]) ? " r-power" : "") + (edge ? " r-edge" : "");
+    return `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${d}</td><td>${esc(e[1])}${e[3] === "first" ? " ✗" : ""}</td><td>${esc(e[2])}</td></tr>`;
+  }).join("");
+  $("#sch-detail").innerHTML = `
+    <div class="sc-nav"><button id="sch-prev" ${k > 0 ? "" : "disabled"}>◀</button>
+      <h2>${esc(it.file)} · ${esc(it.kind)}</h2>
+      <span class="small">${k + 1} of ${vis.length}</span><button id="sch-next" ${k < vis.length - 1 ? "" : "disabled"}>▶</button></div>
+    <div class="sc-problem"><span class="lab">The failure</span>${esc(BLK_WHY[it.fail] || it.fail)}
+      ${it.n_fail} failure${it.n_fail > 1 ? "s" : ""} of this kind in this block (✗); ${it.n_kind_total.toLocaleString()} of this kind in this category. Times in ${esc(tz)}.</div>
+    <div class="card"><h2>Your verdict: the cause</h2>
+      <div class="vbtns">${BLK_V.map(v => `<button data-v="${esc(v)}" class="${it.verdict === v ? "on" : ""}">${esc(v)}</button>`).join("")}</div>
+      <textarea id="sch-text" rows="3" style="width:100%" placeholder="What caused the failure? Which event was lost?">${esc(it.comment)}</textarea>
+      <div class="small" id="sch-state" style="margin-top:4px">${it.updated_at ? `Saved ${esc(it.updated_at.replace("T", " "))}` : "Verdict and comment save as you go."}</div></div>
+    <div class="card"><h2>The block</h2><div class="kv">
+      <span>Block</span><b>${esc(it.block)}</b>
+      <span>Start</span><span>${esc(fmt(it.block_t0, tz, "mdt"))} · ${esc(it.block_start_by)}</span>
+      <span>End</span><span>${esc(fmt(it.block_t1, tz, "mdt"))} · ${esc(it.block_end_by)}</span>
+      <span>Length</span><span>${schDur(it.gap_s)}, ${it.n_between} events</span>
+      ${it.lost ? `<span>Lost events</span><span>${esc(it.lost)}</span>` : ""}
+      <span>Power Cycle</span><span>#${it.chain} · ${esc(it.chain_start)} ${esc(fmt(it.chain_t0, tz, "mdt"))} → ${esc(it.chain_end)} ${esc(fmt(it.chain_t1, tz, "mdt"))}</span></div></div>
+    <div class="card"><h2>Events</h2><div class="small" style="margin-bottom:6px">Grey: before and after the block. Bold rule: the block's start and end. ✗ highlighted: the failing events. Blue: boot / shutdown. Notifications and standby-bucket changes left out.</div>
       <div class="events" style="max-height:none"><table class="sch-ev"><thead><tr><th>Time</th><th class="num">After previous</th><th>Event</th><th>App</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   $("#sch-prev").onclick = () => k > 0 && openSch(vis[k - 1].id);
   $("#sch-next").onclick = () => k < vis.length - 1 && openSch(vis[k + 1].id);

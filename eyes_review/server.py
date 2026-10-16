@@ -66,7 +66,10 @@ SCENARIOS_MD = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 PROBLEM = "- **Problem it illustrates:**"
 # State-chain review (David, 10-16): <A1>/<category>/_review/state_review.json, built by A1/_review/state_review_build.py
 STATE_DIR = os.environ.get("EYES_A1_DIR", os.path.expanduser("~/workspace/screen_time/A1"))
-STATE_VERDICTS = {"screen-off lost", "screen-on lost", "hidden power cycle", "duplicate screen event", "logging gap", "other", "unsure"}
+STATE_VERDICTS = {"screen-off lost", "screen-on lost", "hidden power cycle", "duplicate screen event", "logging gap", "other", "unsure",
+                  # app-chain failures inside device-state blocks (block_review.json, 10-16)
+                  "Paused lost", "Resumed lost", "Stopped lost", "kill", "app over lock screen", "background launch", "duplicate event",
+                  "device-specific"}
 
 
 def load_scenarios(path=SCENARIOS_MD):
@@ -629,13 +632,18 @@ class Handler(BaseHTTPRequestHandler):
         items = []
         for fn in sorted(glob.glob(os.path.join(STATE_DIR, "*", "_review", "state_review.json"))):
             with open(fn) as fh:
-                items += json.load(fh)["items"]
+                items += [dict(it, list="repeat") for it in json.load(fh)["items"]]
+        totals = {}
+        for fn in sorted(glob.glob(os.path.join(STATE_DIR, "*", "_review", "block_review.json"))):
+            with open(fn) as fh:
+                d = json.load(fh)
+            items += d["items"]; totals[d["folder"]] = d.get("totals", {})
         con = self.db()
         saved = {r["id"]: dict(r) for r in con.execute("SELECT * FROM state_chain_review")}
         for it in items:
             v = saved.get(it["id"], {})
             it.update(verdict=v.get("verdict", ""), comment=v.get("comment", ""), updated_at=v.get("updated_at", ""))
-        return {"dir": STATE_DIR, "items": items}
+        return {"dir": STATE_DIR, "items": items, "block_totals": totals}
 
     def state_review_save(self, b):
         verdict = b.get("verdict") or ""
