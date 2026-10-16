@@ -5,8 +5,12 @@ Non-interactive event; a ScreenOff block the reverse.
 Unknown blocks: where the log contradicts itself nothing is placed (David, 10-16: "In theory, we dont know what happened
 between two ScreenOn events. We are sure: some events got lost. They might be screen off, they might be shutdown and then
 bootup."):
-  two Screen Interactive in a row      Unknown from the first to the second (screen-off lost, or shutdown + boot lost)
-  two Screen Non-interactive in a row  Unknown from the first to the second (screen-on lost, or boot + shutdown lost)
+  two Screen Interactive in a row      ScreenOn from the first up to the last event of the app chain that started after it
+                                       (end: LastEvidence - the app on screen certainly lasted that long), then Unknown to the
+                                       second (screen-off lost, or shutdown + boot lost). No app chain: Unknown from the first.
+  two Screen Non-interactive in a row  Unknown from the first up to the first event of the app chain that reaches the
+                                       second, then ScreenOn (start: FirstEvidence). No app chain: Unknown throughout.
+  (app chain = maximal run of app events that each follow from the ones before; see app_chains)
   before the first screen event        after Bootup: ScreenOn if that event is a Screen Non-interactive (the boot's screen-on
                                        came first), ScreenOff if it is a Screen Interactive; after LogStart: Unknown (the
                                        screen state before logging began is not known)
@@ -23,6 +27,36 @@ from eyeslib.states import device_state as ds
 folder = os.path.abspath(sys.argv[1]); out = os.path.join(folder, "_review")
 ON, OFF = "Screen Interactive", "Screen Non-interactive"
 USE = {"Activity Resumed", "Activity Paused", "Keyguard Hidden", "User Interaction"}
+APP = {"Activity Resumed", "Activity Paused", "Activity Stopped"}
+
+
+def app_chains(idx, nm, pk):
+    """Split app events (indexes idx, in order) into maximal consistent triplet chains, event order only. A chain goes on
+    while each event follows from the ones before: Resumed while the app in front is not pending a Paused, Paused of the
+    app in front (or of the one it handed over to), Stopped of a Paused screen. It stops at the first event that does not
+    follow, and also when it ended properly (nothing in front, nothing Paused-not-Stopped) and a new Resumed comes.
+    Returns a list of (first index, last index)."""
+    out = []; i = 0
+    while i < len(idx):
+        front = pending = None; waiting = {}; started = False; first = last = None
+        j = i
+        while j < len(idx):
+            k = idx[j]; e, x = nm[k], pk[k]; ok = False
+            if e == "Activity Resumed":
+                if pending is None:
+                    if front is not None: pending, front, ok = front, x, True
+                    elif not started or any(v > 0 for v in waiting.values()): front, ok = x, True
+            elif e == "Activity Paused":
+                if x == pending: pending = None; waiting[x] = waiting.get(x, 0) + 1; ok = True
+                elif x == front: front = None; waiting[x] = waiting.get(x, 0) + 1; ok = True
+            elif e == "Activity Stopped":
+                if waiting.get(x, 0) > 0: waiting[x] -= 1; ok = True
+            if not ok: break
+            started = True; first = k if first is None else first; last = k; j += 1
+        if first is None: j = i + 1                     # this event cannot start a chain: skip it
+        else: out.append((first, last))
+        i = j
+    return out
 
 def blocks_of(t, nm, pk, cyc, ci):
     """t, nm, pk: the Power Cycle's events in order. Returns its ScreenOn / ScreenOff / Unknown blocks."""
@@ -47,8 +81,25 @@ def blocks_of(t, nm, pk, cyc, ci):
         ea, eb = nm[a_], nm[b_]
         if ea == ON and eb == OFF:   blk("ScreenOn", a_, ON, b_, OFF)
         elif ea == OFF and eb == ON: blk("ScreenOff", a_, OFF, b_, ON)
-        elif ea == ON:               blk("Unknown", a_, ON, b_, ON, "two Screen Interactive: screen-off lost, or shutdown + boot lost")
-        else:                        blk("Unknown", a_, OFF, b_, OFF, "two Screen Non-interactive: screen-on lost, or boot + shutdown lost")
+        elif ea == ON:
+            # David, 10-16 (4075_C01, Minecraft): the Paused is lost, "we dont know where it ends ... But for sure, it last till
+            # [the last event of the chain]. That's the only thing we can tell." ScreenOn up to the last app event, then Unknown.
+            ch = app_chains([k for k in range(a_ + 1, b_) if nm[k] in APP], nm, pk)
+            if ch:                                      # the last event of the chain that started after the screen-on
+                end = ch[0][1]
+                blk("ScreenOn", a_, ON, end, "LastEvidence", "screen-off lost (or shutdown + boot)")
+                blk("Unknown", end, "LastEvidence", b_, ON, "two Screen Interactive: screen-off lost, or shutdown + boot lost")
+            else:
+                blk("Unknown", a_, ON, b_, ON, "two Screen Interactive, no app events between")
+        else:
+            # mirror: the screen came on somewhere before the first app event; from that event it is on up to the screen-off
+            ch = app_chains([k for k in range(a_ + 1, b_) if nm[k] in APP], nm, pk)
+            if ch:                                      # the first event of the chain that reaches the screen-off
+                start = ch[-1][0]
+                blk("Unknown", a_, OFF, start, "FirstEvidence", "two Screen Non-interactive: screen-on lost, or boot + shutdown lost")
+                blk("ScreenOn", start, "FirstEvidence", b_, OFF, "screen-on lost (or boot + shutdown)")
+            else:
+                blk("Unknown", a_, OFF, b_, OFF, "two Screen Non-interactive, no app events between")
     last = scr[-1]
     if last < len(nm) - 1 or len(scr) == 1:
         blk("ScreenOn" if nm[last] == ON else "ScreenOff", last, nm[last], len(nm) - 1, cyc.end)
