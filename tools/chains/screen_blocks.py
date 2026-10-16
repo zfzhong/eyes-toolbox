@@ -8,11 +8,11 @@ between two ScreenOn events. We are sure: some events got lost. They might be sc
 bootup."):
   two Screen Interactive in a row      lost: Screen Non-interactive (and the Paused / Stopped of the app still in front)
                                        ScreenOn from the first up to the last event of the app chain that started after it
-                                       (end: LastEvidence - the app on screen certainly lasted that long), then Unknown to the
+                                       (end: EventLost - the app on screen certainly lasted that long), then Unknown to the
                                        second. No app chain: Lost from the first.
   two Screen Non-interactive in a row  lost: Screen Interactive (and the Resumed of an app whose chain begins with a Paused)
                                        Lost from the first up to the first event of the app chain that reaches the
-                                       second, then ScreenOn (start: FirstEvidence). No app chain: Lost throughout.
+                                       second, then ScreenOn (start: EventLost). No app chain: Lost throughout.
   A boot signature inside a Lost block adds the alternative "or Device Shutdown + Bootup".
 Unknown remains only where logging had not begun (a LogStart Power Cycle before its first screen event) or a Power Cycle has
 no screen events at all.
@@ -83,7 +83,7 @@ def blocks_of(t, nm, pk, cyc, ci):
     def blk(kind, k0, by0, k1, by1, why="", lost=""):
         seg = slice(k0, k1 + 1); n = nm[seg]; p = pk[seg]
         fallback = int(((n == "Activity Paused") & (p == "com.android.settings")).sum())
-        if kind == "Lost" and fallback: lost = lost + " | or Device Shutdown + Bootup (boot signature inside)"
+        if kind == "EventLost" and fallback: lost = lost + " | or Device Shutdown + Bootup (boot signature inside)"
         B.append(dict(cycle=ci, block=kind, start_t=t[k0], end_t=t[k1], start_by=by0, end_by=by1, why=why, lost=lost,
                       uses=int(np.isin(n, list(USE)).sum()), keyguard_shown=int((n == "Keyguard Shown").sum()),
                       keyguard_hidden=int((n == "Keyguard Hidden").sum()), settings_paused=fallback))
@@ -108,20 +108,20 @@ def blocks_of(t, nm, pk, cyc, ci):
                 end = ch[0][1]
                 fr = chain_end_front([k for k in range(a_ + 1, end + 1) if nm[k] in APP], nm, pk)
                 lost = (f"Activity Paused {fr}, Activity Stopped {fr}, " if fr else "") + "Screen Non-interactive"
-                blk("ScreenOn", a_, ON, end, "LastEvidence", "two Screen Interactive")
-                blk("Lost", end, "LastEvidence", b_, ON, "two Screen Interactive", lost)
+                blk("ScreenOn", a_, ON, end, "EventLost", "two Screen Interactive")
+                blk("EventLost", end, "EventLost", b_, ON, "two Screen Interactive", lost)
             else:
-                blk("Lost", a_, ON, b_, ON, "two Screen Interactive, no app chain between", "Screen Non-interactive")
+                blk("EventLost", a_, ON, b_, ON, "two Screen Interactive, no app chain between", "Screen Non-interactive")
         else:
             # mirror: the screen came on somewhere before the first app event; from that event it is on up to the screen-off
             ch = app_chains([k for k in range(a_ + 1, b_) if nm[k] in APP], nm, pk)
             if ch:                                      # the first event of the chain that reaches the screen-off
                 start = ch[-1][0]
                 lost = "Screen Interactive" + (f", Activity Resumed {pk[start]}" if nm[start] != "Activity Resumed" else "")
-                blk("Lost", a_, OFF, start, "FirstEvidence", "two Screen Non-interactive", lost)
-                blk("ScreenOn", start, "FirstEvidence", b_, OFF, "two Screen Non-interactive")
+                blk("EventLost", a_, OFF, start, "EventLost", "two Screen Non-interactive", lost)
+                blk("ScreenOn", start, "EventLost", b_, OFF, "two Screen Non-interactive")
             else:
-                blk("Lost", a_, OFF, b_, OFF, "two Screen Non-interactive, no app chain between", "Screen Interactive")
+                blk("EventLost", a_, OFF, b_, OFF, "two Screen Non-interactive, no app chain between", "Screen Interactive")
     last = scr[-1]
     if last < len(nm) - 1 or len(scr) == 1:
         blk("ScreenOn" if nm[last] == ON else "ScreenOff", last, nm[last], len(nm) - 1, cyc.end)
@@ -143,12 +143,12 @@ for f in sorted(glob.glob(os.path.join(folder, "processed", "*_sorted_uniq_reord
     Bdf = pd.DataFrame(allB); Bdf["h"] = (Bdf.end_t - Bdf.start_t) / 3600
     Bdf.to_csv(os.path.join(out, f"screen_blocks_{pid}.csv"), index=False)
     k = Bdf.block.value_counts(); h = Bdf.groupby("block").h.sum()
-    lst = Bdf[Bdf.block == "Lost"]
+    lst = Bdf[Bdf.block == "EventLost"]
     rows.append(dict(pid=pid, power_cycles=len(P), blocks=len(Bdf), ScreenOn=int(k.get("ScreenOn", 0)), ScreenOff=int(k.get("ScreenOff", 0)),
-                     Lost=int(k.get("Lost", 0)), Unknown=int(k.get("Unknown", 0)), ScreenOn_h=round(h.get("ScreenOn", 0), 1), ScreenOff_h=round(h.get("ScreenOff", 0), 1),
-                     Lost_h=round(h.get("Lost", 0), 1), Unknown_h=round(h.get("Unknown", 0), 1), lost_with_boot_signature=int((lst.settings_paused > 0).sum())))
+                     Lost=int(k.get("EventLost", 0)), Unknown=int(k.get("Unknown", 0)), ScreenOn_h=round(h.get("ScreenOn", 0), 1), ScreenOff_h=round(h.get("ScreenOff", 0), 1),
+                     Lost_h=round(h.get("EventLost", 0), 1), Unknown_h=round(h.get("Unknown", 0), 1), lost_with_boot_signature=int((lst.settings_paused > 0).sum())))
 S = pd.DataFrame(rows); S.to_csv(os.path.join(out, "screen_blocks.tsv"), sep="\t", index=False)
 print(S.to_string(index=False))
 T = S.drop(columns="pid").sum()
 span = T.ScreenOn_h + T.ScreenOff_h + T.Lost_h + T.Unknown_h
-print(f"\nALL: {int(T.power_cycles)} Power Cycles -> {int(T.blocks):,} blocks: ScreenOn {int(T.ScreenOn):,} ({T.ScreenOn_h:,.0f} h), ScreenOff {int(T.ScreenOff):,} ({T.ScreenOff_h:,.0f} h), Lost {int(T.Lost):,} ({T.Lost_h:,.0f} h = {100 * T.Lost_h / span:.1f}%), Unknown {int(T.Unknown):,} ({T.Unknown_h:,.1f} h); Lost blocks with a boot signature inside: {int(T.lost_with_boot_signature)}")
+print(f"\nALL: {int(T.power_cycles)} Power Cycles -> {int(T.blocks):,} blocks: ScreenOn {int(T.ScreenOn):,} ({T.ScreenOn_h:,.0f} h), ScreenOff {int(T.ScreenOff):,} ({T.ScreenOff_h:,.0f} h), EventLost {int(T.Lost):,} ({T.Lost_h:,.0f} h = {100 * T.Lost_h / span:.1f}%), Unknown {int(T.Unknown):,} ({T.Unknown_h:,.1f} h); EventLost blocks with a boot signature inside: {int(T.lost_with_boot_signature)}")
