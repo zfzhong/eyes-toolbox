@@ -46,7 +46,7 @@ for f in sorted(glob.glob(os.path.join(folder, "processed", "*_sorted_uniq_reord
         for k, why, fr in walk(idx, nm, pk, lead, inf):
             R.append(dict(block_i=bi, cycle=b.cycle, block=b.block, t=t[k], event=nm[k], app=pk[k], fail=why, front=fr or ""))
         for ka, kb, ev, ia in inf:
-            I.append(dict(block_i=bi, block_id=b.get("block_id", ""), event=ev.replace("Activity ", "") + "(infer)", app=ia,
+            I.append(dict(block_i=bi, block_id=b.get("block_id", ""), event=ev if ev.startswith("Stopped(") else ev.replace("Activity ", "") + "(infer)", app=ia,
                           after_t=t[ka] if ka is not None else np.nan, before_t=t[kb]))
     R = pd.DataFrame(R, columns=["block_i", "cycle", "block", "t", "event", "app", "fail", "front"])
     R.to_csv(os.path.join(out, f"block_fails_{pid}.csv"), index=False)

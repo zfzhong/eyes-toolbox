@@ -30,6 +30,8 @@ FAIL_STRAY = "stopped twice"
 
 FAIL_DOUBLE = "stopped, a double-resumed screen never Paused"
 INFERABLE = {FAIL_RESUMED: "Activity Paused", FAIL_PAUSED: "Activity Resumed", FAIL_DOUBLE: "Activity Paused"}
+# Not inferable, but marked (David, 10-17): a kill or a lost Paused -> PausedOrKilled(infer) just before the Stopped; a
+# Stopped with nothing to stop -> Stopped(unmatched) (a real event without a partner; the front screen is not affected).
 
 def walk(idx, nm, pk, lead=("Activity Stopped",), stop_at_fail=False, inferred=None):
     """Walk the app events idx (indexes into nm / pk) in order. Returns (n, fails): n = events that follow before the
@@ -110,8 +112,9 @@ def walk(idx, nm, pk, lead=("Activity Stopped",), stop_at_fail=False, inferred=N
                 nr = next_r(x, old["n"]); infer(old["n"], nr if nr is not None and nr <= n else n, "Activity Paused", x)
             elif R and later[n] == "Activity Paused": pass
             elif last.get(x) == "Activity Stopped": pass   # written twice (S8): nothing of x between the two
-            elif R: why = FAIL_KILL; Q.remove(R[0]); pending.discard(x)
-            else: why = FAIL_STRAY
+            elif R:
+                why = FAIL_KILL; Q.remove(R[0]); pending.discard(x); infer(lastpos.get(x), n, "PausedOrKilled", x)
+            else: why = FAIL_STRAY; infer(n, n, "Stopped(unmatched)", x)
             seen.add(x)
         last[x] = e; lastpos[x] = n
         if why:

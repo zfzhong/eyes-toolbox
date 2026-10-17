@@ -110,40 +110,44 @@ def blocks_of(t, nm, pk, cyc, ci):
         if ea == ON and eb == OFF:   blk("ScreenOn", a_, ON, b_, OFF)
         elif ea == OFF and eb == ON: blk("ScreenOff", a_, OFF, b_, ON)
         elif ea == ON:
-            # David, 10-16 (4075_C01, Minecraft): the Paused is lost, "we dont know where it ends ... But for sure, it last till
-            # [the last event of the chain]. That's the only thing we can tell." ScreenOn up to the last app event, then Unknown.
+            # Two screen-ons: a Screen Non-interactive(infer) lies between them (David, 10-17: the chain goes on as long as
+            # the front screen continues logically; an inferred event has no time, only the window between two real
+            # events; that window is the EventLost block). Activity needs the screen on, so it lies after the last
+            # Resumed r. If the app in front at r is then Paused with no Resumed after it, the screen-off is what paused
+            # it: the window is the step just before that Paused. Otherwise it is after the last app event, and that app's
+            # Paused(infer) / Stopped(infer) lie in the same window (4075_C01, Minecraft).
             ai = [k for k in range(a_ + 1, b_) if nm[k] in APP]
-            n_ok = run_until_fail(ai, nm, pk)           # David, 10-16: construct until we fail; the last event that
-            ch = n_ok > 0                               # still follows ends the ScreenOn and starts EventLost
-            if ch:
-                end = ai[n_ok - 1]
-                fr = chain_end_front([k for k in range(a_ + 1, end + 1) if nm[k] in APP], nm, pk)
-                lost = (f"Activity Paused {fr}, Activity Stopped {fr}, " if fr else "") + "Screen Non-interactive"
-                blk("ScreenOn", a_, ON, end, "EventLost", "two Screen Interactive")
-                blk("EventLost", end, "EventLost", b_, ON, "two Screen Interactive", lost)
+            rs = [j for j, k in enumerate(ai) if nm[k] == "Activity Resumed"]
+            if rs:
+                r = rs[-1]; fr = chain_end_front(ai[:r + 1], nm, pk)
+                pj = next((j for j in range(r + 1, len(ai)) if nm[ai[j]] == "Activity Paused" and pk[ai[j]] == fr), None)
+                if pj is not None:                      # the screen-off paused the app in front: tight window
+                    w0, w1 = ai[pj - 1], ai[pj]
+                    blk("ScreenOn", a_, ON, w0, "EventLost", "two Screen Interactive")
+                    blk("EventLost", w0, "EventLost", w1, "EventLost", "two Screen Interactive", "Screen Non-interactive(infer)")
+                    blk("ScreenOff", w1, "EventLost", b_, ON, "two Screen Interactive")
+                else:
+                    w0 = ai[-1]
+                    lost = (f"Paused(infer) {fr}, Stopped(infer) {fr}, " if fr else "") + "Screen Non-interactive(infer)"
+                    blk("ScreenOn", a_, ON, w0, "EventLost", "two Screen Interactive")
+                    blk("EventLost", w0, "EventLost", b_, ON, "two Screen Interactive", lost)
             else:
-                blk("EventLost", a_, ON, b_, ON, "two Screen Interactive, no app chain between", "Screen Non-interactive")
+                blk("EventLost", a_, ON, b_, ON, "two Screen Interactive, no app chain between", "Screen Non-interactive(infer)")
         else:
-            # mirror. (10-16) Forward from the first screen-off: the Paused / Stopped of the apps it sent away, up to the
-            # first Resumed (a Resumed needs the screen on). Backward from the second screen-off: the earliest event from
-            # which all follows. EventLost is what lies between: the silent stretch where the Screen Interactive was lost.
+            # Two screen-offs: a Screen Interactive(infer) lies between them. After the first screen-off come the Paused /
+            # Stopped of the apps it sent away; the first Resumed needs the screen on. The window is between the last of
+            # those and that Resumed; from the Resumed the screen is on up to the second screen-off (its app events chain
+            # on, with inferred events where some are lost).
             ai = [k for k in range(a_ + 1, b_) if nm[k] in APP]
-            f_end = next((j for j, k in enumerate(ai) if nm[k] == "Activity Resumed"), len(ai))
-            s0 = len(ai)
-            while s0 > f_end and run_until_fail(ai[s0 - 1:], nm, pk, ("Activity Paused", "Activity Stopped")) == len(ai) - s0 + 1: s0 -= 1
-            first = a_
-            if f_end > 0:
-                blk("ScreenOff", a_, OFF, ai[f_end - 1], "EventLost", "two Screen Non-interactive")
-                first = ai[f_end - 1]
-            fb = OFF if first == a_ else "EventLost"
-            if s0 < len(ai):
-                start = ai[s0]
-                lost = "Screen Interactive" + (f", Activity Resumed {pk[start]}" if nm[start] != "Activity Resumed" else "")
-                if start != first:
-                    blk("EventLost", first, fb, start, "EventLost", "two Screen Non-interactive", lost)
-                blk("ScreenOn", start, "EventLost", b_, OFF, "two Screen Non-interactive")
+            r1 = next((j for j, k in enumerate(ai) if nm[k] == "Activity Resumed"), None)
+            if r1 is not None:
+                w0 = ai[r1 - 1] if r1 > 0 else a_; w1 = ai[r1]
+                if w0 != a_: blk("ScreenOff", a_, OFF, w0, "EventLost", "two Screen Non-interactive")
+                if w1 != w0:
+                    blk("EventLost", w0, OFF if w0 == a_ else "EventLost", w1, "EventLost", "two Screen Non-interactive", "Screen Interactive(infer)")
+                blk("ScreenOn", w1, "EventLost", b_, OFF, "two Screen Non-interactive")
             else:
-                blk("EventLost", first, fb, b_, OFF, "two Screen Non-interactive, no app chain between", "Screen Interactive")
+                blk("EventLost", a_, OFF, b_, OFF, "two Screen Non-interactive, no app chain between", "Screen Interactive(infer)")
     last = scr[-1]
     if last < len(nm) - 1 or len(scr) == 1:
         blk("ScreenOn" if nm[last] == ON else "ScreenOff", last, nm[last], len(nm) - 1, cyc.end)

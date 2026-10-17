@@ -1740,7 +1740,9 @@ function blkRows(it) {
   const nb = L => L.filter(e => e[0] === null || !mine.has(key(e)));
   const seen = new Set(), ev = [...nb(P.slice().reverse().flatMap(x => x.events)), ...own, ...nb(N.flatMap(x => x.events))]
     .filter(e => { const k = key(e); if (k === null || mine.has(k)) return true; if (seen.has(k)) return false; seen.add(k); return true; });
-  for (const x of (it.inferred || [])) {                 // Paused(infer) / Resumed(infer): no time; placed just before
+  const unmatched = new Set((it.inferred || []).filter(x => x.event.startsWith("Stopped(")).map(x => x.before_t.toFixed(3) + x.app));
+  for (const x of (it.inferred || []).filter(x => !x.event.startsWith("Stopped("))) {   // Paused(infer) / Resumed(infer) /
+                                                                                         // PausedOrKilled(infer): no time; placed just before
     let j = ev.findIndex(e => e[0] !== null && e[3] !== "inf" && Math.abs(e[0] - x.before_t) < 1e-3);   // the event it
     while (j > 0 && ev[j - 1][3] === "inf" && Math.abs(ev[j - 1][0] - x.before_t) < 1e-3) j--;           // must precede,
     while (j >= 0 && j < ev.length && ev[j][3] === "inf") j++;                                            // in inference order
@@ -1754,15 +1756,15 @@ function blkRows(it) {
     if (e[0] === null) return `<tr><td colspan="5" class="small" style="text-align:center">${esc(e[1])}</td></tr>`;
     const d = prev === null ? "" : schDur(e[0] - prev); prev = e[0];
     if (e[3] === "inf") {
-      const tn = TC.get(ei), c = tn ? TRIP_COLORS[(tn - 1) % TRIP_COLORS.length] : "inherit";
-      return `<tr class="r-inf"><td class="small"><i>no time</i>${e[4] ? `<div class="small">after ${esc(fmt(e[4], tz, "mdt").slice(11))}</div>` : ""}</td><td></td><td><span style="color:${c};font-style:italic;font-weight:600;border:1px dashed ${c};padding:0 4px">● ${esc(e[1].replace("Activity ", ""))}</span>${tn ? ` <span class="small" style="color:${c}">T${tn}</span>` : ""}</td><td><i>${esc(e[2])}</i></td><td class="small"><i>inferred</i></td></tr>`;
+      const tn = TC.get(ei), pk = e[1].includes("PausedOrKilled"), c = pk ? "#757575" : tn ? TRIP_COLORS[(tn - 1) % TRIP_COLORS.length] : "inherit";
+      return `<tr class="r-inf"><td class="small"><i>no time</i>${e[4] ? `<div class="small">after ${esc(fmt(e[4], tz, "mdt").slice(11))}</div>` : ""}</td><td></td><td><span style="color:${c};font-style:italic;font-weight:600;border:1px dashed ${c};padding:0 4px">● ${esc(e[1].replace("Activity ", ""))}</span>${tn ? ` <span class="small" style="color:${c}">T${tn}</span>` : ""}</td><td><i>${esc(e[2])}</i></td><td class="small"><i>${pk ? "inferred: kill or lost Paused" : "inferred"}</i></td></tr>`;
     }
     const bm = BMr.get(ei) || "";
     let bl = blockOf(e[0], blocks.filter(b => b.t1 - b.t0 > 1e-3));
     if (!bl) bl = e[0] < blocks[0].t0 ? "before" : "after";
     const nbr = e[3] === "nbr" || (bl !== it.block && !bm);
     const cls = "r-" + (e[3] === "nbr" ? "before" : e[3]) + (POWER.has(e[1]) ? " r-power" : "") + (bm ? " r-bound" : "");
-    return `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${d}</td><td>${tripCell(e, TC.get(ei))}${e[3] === "first" ? " ✗" : ""}</td><td>${esc(e[2])}</td><td>${bm ? `<span class="bound-lab">${esc(bm)}</span>` : `<span class="small">${esc(bl)}</span>`}</td></tr>`;
+    return `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${d}</td><td>${tripCell(e, TC.get(ei))}${unmatched.has(e[0].toFixed(3) + e[2]) && String(e[1]).startsWith("Activity Stopped") ? ' <span class="small" style="color:#757575;border:1px dashed #757575;padding:0 3px">Stopped(unmatched)</span>' : ""}${e[3] === "first" ? " ✗" : ""}</td><td>${esc(e[2])}</td><td>${bm ? `<span class="bound-lab">${esc(bm)}</span>` : `<span class="small">${esc(bl)}</span>`}</td></tr>`;
   }).join("");
 }
 async function blkMore(it, dir) {
@@ -1788,7 +1790,7 @@ function tripletColors(events) {
   const out = new Map(), q = {}; let n = 0;
   events.forEach((e, i) => {
     if (e[0] === null || !String(e[1]).startsWith("Activity")) return;
-    const ev = String(e[1]).split("  [")[0].replace(" (infer)", ""), app = e[2], Q = q[app] = q[app] || [];
+    const ev = String(e[1]).split("  [")[0].replace(" (infer)", "").replace("PausedOrKilled", "Paused"), app = e[2], Q = q[app] = q[app] || [];
     if (ev === "Activity Resumed") {
       const tr = {n: ++n, s: "R"}; Q.push(tr); out.set(i, tr.n);
     } else if (ev === "Activity Paused") {
