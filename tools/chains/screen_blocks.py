@@ -90,7 +90,12 @@ def front_break(ai, nm, pk):
             if front is not None and front != x and not fpaused:
                 nr = next((r for r in rpos if r > j), len(ai))              # the next Resumed after this one
                 fp = next((jj for jj in range(j + 1, nr) if pk[ai[jj]] == front and nm[ai[jj]] == "Activity Paused"), None)
-                if fp is None: return ("lost", lastj.get(front, j - 1))   # no hand-over Paused: the front screen breaks
+                if fp is None:
+                    nf = next((jj for jj in range(j + 1, len(ai)) if pk[ai[jj]] == front), None)
+                    if nf is None or nm[ai[nf]] != "Activity Stopped":
+                        return ("lost", lastj.get(front, j - 1))   # no hand-over: the front screen breaks
+                    # else the front screen is Stopped after the take-over (R(B) .. S(A)): an ordinary hand-over
+                    # with only its Paused lost (Paused(infer), 4104_C01 YouTube -> home screen); no screen event is lost
             front, fpaused = x, False
         elif e == "Activity Paused" and x == front:
             fpaused = True
