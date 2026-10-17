@@ -20,6 +20,9 @@ for folder in sys.argv[1:]:
         B = pd.read_csv(bf); L = B[B.block == "EventLost"]
         if not len(L): continue
         F = pd.read_csv(ff); C = pd.read_csv(os.path.join(out, f"power_cycles_{pid}.csv"))
+        inf_f = os.path.join(out, f"block_inferred_{pid}.csv")
+        INF = pd.read_csv(inf_f) if os.path.exists(inf_f) else pd.DataFrame(columns=["block_i", "event", "app", "after_t", "before_t"])
+        AMB = {"stopped in front, no Paused", "stopped twice"}
         tz = pd.read_csv(f, usecols=["timezone"], nrows=1).timezone.iloc[0] or "UTC"
         ev = ds.load_events(f); t = ev.t.to_numpy(); nm = ev.name.to_numpy(); pk = ev.app_package_name.astype(str).to_numpy()
         keep = np.where(~np.isin(nm, list(QUIET)))[0]
@@ -35,18 +38,22 @@ for folder in sys.argv[1:]:
             items.append(dict(id=f"el|{b.block_id}", list="eventlost", file=pid, folder=os.path.basename(folder), tz=tz,
                               chain=int(b.cycle), chain_start=c.start, chain_end=c.end, chain_start_by=c.start_by, chain_end_by=c.end_by,
                               chain_t0=float(c.start_t), chain_t1=float(c.end_t), chain_repeats=int(c.screen_repeats),
-                              block_id=str(b.block_id) if "block_id" in b else "", kind="Inconsistent EventLost block (app chain fails inside)" if len(fb) else "Consistent app events inside an EventLost block",
-                              block="EventLost", fail="eventlost-fail" if len(fb) else "eventlost-ok", why=str(b.why),
+                              block_id=str(b.block_id) if "block_id" in b else "", kind=("Inconsistent EventLost block (two readings fit)" if fb.fail.isin(AMB).any() else
+                                    "EventLost block, consistent with inferred events" if len(fb) else "Consistent app events inside an EventLost block"),
+                              inferred=[dict(event=r.event, app=r.app, after_t=None if pd.isna(r.after_t) else float(r.after_t), before_t=float(r.before_t))
+                                        for r in INF[INF.block_i == bi].itertuples()],
+                              block="EventLost", fail="eventlost-fail" if fb.fail.isin(AMB).any() else ("eventlost-inferred" if len(fb) else "eventlost-ok"), why=str(b.why),
                               block_t0=float(b.start_t), block_t1=float(b.end_t), block_start_by=str(b.start_by), block_end_by=str(b.end_by),
                               lost=b.lost if isinstance(b.lost, str) else "", t1=float(t[inner[0]]), t2=float(b.end_t),
                               gap_s=round(float(b.end_t - b.start_t), 1), n_between=len(ins), n_app=len(inner),
                               n_fail=len(fb), n_kind_total=0, fails=sorted(set(fb.fail)),
                               events=[row(k, "before") for k in keep[max(ka - CTX, 0):ka]] + rows + [row(k, "after") for k in keep[kb:kb + CTX]]))
-    items.sort(key=lambda i: (i["fail"] != "eventlost-fail", i["file"], i["t1"]))
-    for k in ("eventlost-fail", "eventlost-ok"):
+    items.sort(key=lambda i: (["eventlost-fail", "eventlost-inferred", "eventlost-ok"].index(i["fail"]), i["file"], i["t1"]))
+    for k in ("eventlost-fail", "eventlost-inferred", "eventlost-ok"):
         n = sum(i["fail"] == k for i in items)
         for i in items:
             if i["fail"] == k: i["n_kind_total"] = n
     json.dump(dict(folder=os.path.basename(folder), items=items), open(os.path.join(out, "eventlost_review.json"), "w"))
-    print(os.path.basename(folder), len(items), "EventLost blocks with app events:", sum(i["n_fail"] > 0 for i in items), "with a failure inside,",
-          sum(i["n_fail"] == 0 for i in items), "with consistent chains only")
+    c = {k: sum(i["fail"] == k for i in items) for k in ("eventlost-fail", "eventlost-inferred", "eventlost-ok")}
+    print(os.path.basename(folder), len(items), "EventLost blocks with app events:", c["eventlost-fail"], "Inconsistent,", c["eventlost-inferred"],
+          "consistent with inferred events,", c["eventlost-ok"], "consistent")
