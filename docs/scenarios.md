@@ -21,6 +21,7 @@ For each level, what is missing from the log. David's example (S1): "for App, th
   - **not emitted: <event>**: Android never writes it in this situation (e.g. a clean shutdown does not Stop a small window); not a loss;
   - **wrong time: <event>**: logged, but its time is not when it happened (e.g. an unclean shutdown stamped at the last save);
   - **not logged: <field>** (added 10-15, S6): every event is there, but Chronicle drops a field Android writes (the activity class name), and without it the events can be read two ways;
+  - **Truth** (added 10-16, S7, David): the log is complete and the event order alone gives the true reading, though a strict package-only chain would call it broken. A scenario labelled Truth records a correct Android behaviour that a rule must accept, not a defect;
   - **none**: nothing in this level is involved.
 - A level is marked **lost** only when the evidence shows the event happened in or near the scenario. If it may have happened long before (e.g. a boot some time before the log began), the level is **none** (David, 10-10: S1 power is "simply NONE, not bootup missing").
 - **Cause of the loss:** log start (the file begins mid-state), log end, logger gap, unclean shutdown, logger design (S6), unknown.
@@ -193,3 +194,57 @@ For each level, what is missing from the log. David's example (S1): "for App, th
 
   Cause: logger design (Chronicle keeps the package, drops the class). Edge: inside. Inferred: Delta Force in front 12:55:17 → 13:42:59. Confidence: certain (class names, and Android's own daily total).
 - **For the paper:** a fourth kind of log defect besides lost, not emitted and wrong time: the information was emitted by Android but **not logged** by the logger. Other cases of the same kind: one app's screens looking like a skipped Paused (C6, Facebook), and car screens (GhostActivity) mixed with phone use in Android Auto (E6).
+
+---
+
+## S7. Three screens of one app, logged as R P R P R S S P S (EyesApp, LiSiYu's RedMi) — Truth
+- **Label: Truth** (David, 10-16). Nothing is lost and nothing is wrong. This is how Android logs an app moving through its own screens, and the reading below is the true one.
+- **Problem it illustrates:** a correct log that a strict package-only chain would call broken. Chronicle drops the class name, so an app passing through three of its own screens shows, for one package: Resumed → Paused → Resumed → Paused → Resumed → Stopped → Stopped → Paused → Stopped. The two Stopped belong to the first two screens. They arrive while the third screen of the same app is in front, and that screen's own Paused comes later. A chain that takes "Stopped of the app in front, no Paused" as a failure stops there. In the chain method (claude/chain-method-1015.md) that put the boundary of an EventLost block at the wrong place (4103_C01, below).
+- **Where:** LiSiYu RedMi (Xiaomi 2510DRK44C, Android 16, EyesApp 1.9; device 0c4878d3), 2026-10-07, Asia/Shanghai. WeChat (com.tencent.mm).
+- **Event trace (local time; class names as EyesApp logs them, Chronicle would keep only the package):**
+
+| Time | Event | Package | Class (not in Chronicle) |
+|---|---|---|---|
+| 17:02:04.784 | Activity Resumed | WeChat | **SoSoProxyUI** (screen 1) |
+| 17:02:07.437 | Activity Paused | WeChat | SoSoProxyUI |
+| 17:02:07.440 | Activity Resumed | WeChat | **RedirectUI** (screen 2) |
+| 17:02:07.450 | Activity Paused | WeChat | RedirectUI |
+| 17:02:07.452 | Activity Resumed | WeChat | **LauncherUI** (screen 3) |
+| 17:02:07.505 | Activity Stopped | WeChat | SoSoProxyUI (screen 1) |
+| 17:02:07.511 | Activity Stopped | WeChat | RedirectUI (screen 2) |
+| 17:02:07 – 17:03:06 | WeChat main screen in use | | |
+| 17:03:06.121 | Activity Paused | WeChat | LauncherUI (screen 3) |
+| 17:03:06.124 | Activity Resumed | home screen | Launcher |
+| 17:03:07.244 | Activity Stopped | WeChat | LauncherUI |
+
+- **Reading:** three triplets, all complete: SoSoProxyUI 17:02:04.784 → 07.437 → 07.505; RedirectUI 07.440 → 07.450 → 07.511; LauncherUI 07.452 → 17:03:06.121 → 17:03:07.244. WeChat was in front from 17:02:04.784 to 17:03:06.121.
+- **How common (EyesApp, all days to 10-16):**
+  - The exact sequence R P R P R S S P S for one package occurs **93 times** on 8 devices: Alipay 57 (SchemeStartActivity → LiteProcessActivity → XRiverActivity, a mini-program opening), WeChat 23, others once each (Douyin, Kuaishou, Baidu, Fanqie reader, Brawl Stars, Messages).
+  - The general form, a Stopped of an earlier screen while another screen of the same app is in front: **14,260 of 34,284 Stopped (42%)**, on 12 devices. Chrome (b566b43f, 10-08): ChromeTabbedActivity ↔ DownloadActivity, and ChromeLauncherActivity → ChromeTabbedActivity / CustomTabActivity, 12 times.
+- **The same pattern in Chronicle (A1):** 4103_C01 (child, tablet), Power Cycle #5 (Bootup 2024-11-13 21:26:20.908), Chrome, America/New_York:
+
+| Time | Event | Chrome screen |
+|---|---|---|
+| 21:29:06.720 | Activity Resumed | 1 |
+| 21:29:10.281 | Activity Paused | 1 |
+| 21:29:10.367 | Activity Resumed | 2 |
+| 21:29:10.734 | Activity Paused | 2 |
+| 21:29:10.769 | Activity Resumed | 3 |
+| 21:29:13.249 | Activity Stopped | 1 |
+| 21:29:13.367 | Activity Stopped | 2 |
+| 21:29:15.802 | Activity Paused | 3 (YouTube Resumed at 21:29:15.920) |
+| 21:29:17.792 | Activity Stopped | 3 |
+
+  The backward chain construction failed at 21:29:13.249 and started the ScreenOn there, putting the minutes before it into EventLost. With the rule below it continues back to 21:28:54.613, where a real failure stops it (Play Store Resumed with no Paused).
+- **Rule (David, 10-16: "we need a bit flexibility when constructing triplets"; toolbox 28f265f):** a Stopped of an app goes to an earlier Paused-not-Stopped screen of that app, also while a newer screen of the same app is in front, as long as that newer screen's own Paused comes later. Order only, no time window. A real kill (C8) differs: the app in front is Stopped with no Paused, and its screen never Pauses afterward.
+- **Patterns:** C7 (late Stopped after an activity hand-over), C6 (one app's screens), proposed C9 (this one).
+- **Scenario label:**
+
+| Level | Status |
+|---|---|
+| Power | none |
+| Device state | complete |
+| App: in front | complete (**Truth**); in Chronicle, not logged: activity class name, but the order of events alone gives this reading |
+| App: small window, car projection, foreground service | none |
+
+  Cause: none (Android's normal order for screens of one app). Edge: inside. Inferred: WeChat in front 17:02:04.784 → 17:03:06.121. Confidence: certain (class names).
