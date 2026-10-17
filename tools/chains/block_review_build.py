@@ -53,10 +53,10 @@ for folder in sys.argv[1:]:
                     cut.append(inside[j]); last = j
                 inside = cut
             evs = [row(k, "before") for k in keep[max(ka - CTX, 0):ka]] + inside + [row(k, "after") for k in keep[kb:kb + CTX]]
-            items.append(dict(id=f"blk|{pid}|{int(p.block_i)}|{p.fail}", list="block", file=pid, folder=os.path.basename(folder), tz=tz,
+            items.append(dict(id=f"blk|{b.block_id}|{p.fail}", list="block", file=pid, folder=os.path.basename(folder), tz=tz,
                               chain=int(b.cycle), chain_start=c.start, chain_end=c.end, chain_start_by=c.start_by, chain_end_by=c.end_by,
                               chain_t0=float(c.start_t), chain_t1=float(c.end_t), chain_repeats=int(c.screen_repeats),
-                              kind=f"{b.block}: {p.fail}", block=b.block, fail=p.fail, block_t0=float(b.start_t), block_t1=float(b.end_t),
+                              block_id=str(b.block_id) if "block_id" in b else "", kind=f"{b.block}: {p.fail}", block=b.block, fail=p.fail, block_t0=float(b.start_t), block_t1=float(b.end_t),
                               block_start_by=str(b.start_by), block_end_by=str(b.end_by), lost=str(b.get("lost", "")) if isinstance(b.get("lost", ""), str) else "",
                               t1=float(p.t), t2=float(b.end_t), gap_s=round(float(b.end_t - b.start_t), 1), n_between=int(kb - ka),
                               n_fail=int(p.n), n_kind_total=int(tot[(p.block, p.fail)]), events=evs))

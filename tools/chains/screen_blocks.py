@@ -163,6 +163,8 @@ for f in sorted(glob.glob(os.path.join(folder, "processed", "*_sorted_uniq_reord
         Bs = blocks_of(t[i0:i1], nm[i0:i1], pk[i0:i1], c, ci)
         allB += Bs
     Bdf = pd.DataFrame(allB); Bdf["h"] = (Bdf.end_t - Bdf.start_t) / 3600
+    # block id (10-16): <file>/P<Power Cycle, from 1>/B<block within it, from 1>, e.g. 4103_C01_AndroidTab/P5/B3
+    Bdf.insert(0, "block_id", [f"{pid}/P{c + 1}/B{k + 1}" for c, k in zip(Bdf.cycle, Bdf.groupby("cycle").cumcount())])
     Bdf.to_csv(os.path.join(out, f"screen_blocks_{pid}.csv"), index=False)
     k = Bdf.block.value_counts(); h = Bdf.groupby("block").h.sum()
     lst = Bdf[Bdf.block == "EventLost"]

@@ -1694,7 +1694,7 @@ function renderBlkList(vis) {
   for (const i of vis) {
     if (i.kind !== last) { html += `<div class="sc-file">${esc(i.kind)} · ${i.n_kind_total.toLocaleString()} in all</div>`; last = i.kind; }
     html += `<div class="item ${i.id === SCH.cur ? "cur" : ""}" data-id="${esc(i.id)}">
-      <div>${esc(i.block)} block <span class="small">· ${esc(fmt(i.block_t0, i.tz, "mdt").slice(5, 19))} → ${esc(fmt(i.block_t1, i.tz, "mdt").slice(5, 19))}</span></div>
+      <div><b>${esc(i.block_id || "")}</b> ${esc(i.block)} <span class="small">· ${esc(fmt(i.block_t0, i.tz, "mdt").slice(5, 19))} → ${esc(fmt(i.block_t1, i.tz, "mdt").slice(5, 19))}</span></div>
       <div>${i.verdict ? `<span class="pill v-keep">${esc(i.verdict)}</span>` : `<span class="pill">to review</span>`}</div>
       <div class="sub">${esc(i.file)} · ${i.list === "eventlost" ? `${i.n_app} app events, ` : ""}${i.n_fail} failure${i.n_fail === 1 ? "" : "s"} · ${schDur(i.gap_s)}</div></div>`;
   }
@@ -1786,7 +1786,7 @@ function openBlk(it, k, vis) {
   }).join("");
   $("#sch-detail").innerHTML = `
     <div class="sc-nav"><button id="sch-prev" ${k > 0 ? "" : "disabled"}>◀</button>
-      <h2>${esc(it.block)} block ${esc(fmt(it.block_t0, tz, "mdt"))} → ${esc(fmt(it.block_t1, tz, "mdt"))} · ${esc(it.file)}</h2>
+      <h2>${esc(it.block_id || "")} · ${esc(it.block)} block ${esc(fmt(it.block_t0, tz, "mdt"))} → ${esc(fmt(it.block_t1, tz, "mdt"))} · ${esc(it.file)}</h2>
       <span class="small">${k + 1} of ${vis.length}</span><button id="sch-next" ${k < vis.length - 1 ? "" : "disabled"}>▶</button></div>
     <div class="sc-problem"><span class="lab">The failure</span>${esc(BLK_WHY[it.fail] || it.fail)}
       ${it.n_fail} failure${it.n_fail > 1 ? "s" : ""} of this kind in this block (✗); ${it.n_kind_total.toLocaleString()} of this kind in this category. Times in ${esc(tz)}.</div>
@@ -1795,7 +1795,7 @@ function openBlk(it, k, vis) {
       <textarea id="sch-text" rows="3" style="width:100%" placeholder="What caused the failure? Which event was lost?">${esc(it.comment)}</textarea>
       <div class="small" id="sch-state" style="margin-top:4px">${it.updated_at ? `Saved ${esc(it.updated_at.replace("T", " "))}` : "Verdict and comment save as you go."}</div></div>
     <div class="card"><h2>The block</h2><div class="kv">
-      <span>Block</span><b>${esc(it.block)}</b>
+      <span>Block</span><b>${esc(it.block_id || "")} · ${esc(it.block)}</b>
       <span>Start</span><span>${esc(fmt(it.block_t0, tz, "mdt"))} · ${esc(it.block_start_by)}</span>
       <span>End</span><span>${esc(fmt(it.block_t1, tz, "mdt"))} · ${esc(it.block_end_by)}</span>
       <span>Length</span><span>${schDur(it.gap_s)}, ${it.n_between} events</span>
