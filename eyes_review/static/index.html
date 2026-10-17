@@ -1694,9 +1694,9 @@ function renderBlkList(vis) {
   for (const i of vis) {
     if (i.kind !== last) { html += `<div class="sc-file">${esc(i.kind)} · ${i.n_kind_total.toLocaleString()} in all</div>`; last = i.kind; }
     html += `<div class="item ${i.id === SCH.cur ? "cur" : ""}" data-id="${esc(i.id)}">
-      <div>${esc(i.file)} <span class="small">· Power Cycle #${i.chain + 1}</span></div>
+      <div>${esc(i.block)} block <span class="small">· ${esc(fmt(i.block_t0, i.tz, "mdt").slice(5, 19))} → ${esc(fmt(i.block_t1, i.tz, "mdt").slice(5, 19))}</span></div>
       <div>${i.verdict ? `<span class="pill v-keep">${esc(i.verdict)}</span>` : `<span class="pill">to review</span>`}</div>
-      <div class="sub">${esc(fmt(i.t1, i.tz, "mdt").slice(0, 16))} · ${i.list === "eventlost" ? `${i.n_app} app events, ` : ""}${i.n_fail} failure${i.n_fail === 1 ? "" : "s"} · block ${schDur(i.gap_s)}</div></div>`;
+      <div class="sub">${esc(i.file)} · ${i.list === "eventlost" ? `${i.n_app} app events, ` : ""}${i.n_fail} failure${i.n_fail === 1 ? "" : "s"} · ${schDur(i.gap_s)}</div></div>`;
   }
   $("#sch-list").innerHTML = html || `<div class="empty">Nothing in this list. Run block_fails.py and block_review_build.py.</div>`;
 }
@@ -1786,7 +1786,7 @@ function openBlk(it, k, vis) {
   }).join("");
   $("#sch-detail").innerHTML = `
     <div class="sc-nav"><button id="sch-prev" ${k > 0 ? "" : "disabled"}>◀</button>
-      <h2>${esc(it.file)} · ${esc(it.kind)}</h2>
+      <h2>${esc(it.block)} block ${esc(fmt(it.block_t0, tz, "mdt"))} → ${esc(fmt(it.block_t1, tz, "mdt"))} · ${esc(it.file)}</h2>
       <span class="small">${k + 1} of ${vis.length}</span><button id="sch-next" ${k < vis.length - 1 ? "" : "disabled"}>▶</button></div>
     <div class="sc-problem"><span class="lab">The failure</span>${esc(BLK_WHY[it.fail] || it.fail)}
       ${it.n_fail} failure${it.n_fail > 1 ? "s" : ""} of this kind in this block (✗); ${it.n_kind_total.toLocaleString()} of this kind in this category. Times in ${esc(tz)}.</div>
@@ -1801,8 +1801,8 @@ function openBlk(it, k, vis) {
       <span>Length</span><span>${schDur(it.gap_s)}, ${it.n_between} events</span>
       ${it.why ? `<span>Contradiction</span><span>${esc(it.why)}</span>` : ""}
       ${it.lost ? `<span>Lost events</span><span>${esc(it.lost)}</span>` : ""}
-      <span>Power Cycle</span><span>#${it.chain + 1} · ${esc(it.chain_start)} ${esc(fmt(it.chain_t0, tz, "mdt"))} → ${esc(it.chain_end)} ${esc(fmt(it.chain_t1, tz, "mdt"))}</span></div></div>
-    <div class="card"><h2>Events</h2><div class="small" style="margin-bottom:6px">Grey: before and after the block. Bold rule: the block's start and end. ✗ highlighted: the failing events. Blue: boot / shutdown. Notifications and standby-bucket changes left out.</div>
+      <span class="small">Inside</span><span class="small">Power Cycle #${it.chain + 1} (for reference only)</span></div></div>
+    <div class="card"><h2>Events</h2><div class="small" style="margin-bottom:6px">Only this block's events, with a few before and after in grey. Bold rule: the block's start and end. ✗ highlighted: the failing events. Blue: boot / shutdown. Notifications and standby-bucket changes left out.</div>
       <div class="events" style="max-height:none"><table class="sch-ev"><thead><tr><th>Time</th><th class="num">After previous</th><th>Event</th><th>App</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   $("#sch-prev").onclick = () => k > 0 && openSch(vis[k - 1].id);
   $("#sch-next").onclick = () => k < vis.length - 1 && openSch(vis[k + 1].id);
