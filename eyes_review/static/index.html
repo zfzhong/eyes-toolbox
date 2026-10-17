@@ -1758,6 +1758,9 @@ async function openSch(id, noflush) {
   if (!noflush) await schFlush();
   const it = SCH.items.find(i => i.id === id);
   if (!it) { $("#sch-detail").innerHTML = `<div class="empty">Pick a contradiction on the left.</div>`; return; }
+  if ($("#sch-folder").value !== it.folder || $("#sch-list-kind").value !== (it.list || "repeat")) {   // a link to an item
+    $("#sch-folder").value = it.folder; $("#sch-list-kind").value = it.list || "repeat"; $("#sch-status").value = "all";   // in another list
+  }
   SCH.cur = id; renderSchList(); history.replaceState(null, "", "#sch-" + encodeURIComponent(id));
   const vis = schVisible(), k = vis.findIndex(i => i.id === id), tz = it.tz;
   if (it.list === "block") return openBlk(it, k, vis);
