@@ -7,6 +7,12 @@ Each entry: the problem it illustrates, where to find it (file, layer, stretch),
 Times as logged (UTC) unless the entry says otherwise. The review page shows the same stretch in local time.
 Review page: the toolbox's local review app (`make review`), tab **Scenarios**, one scenario at a time with a comment box. Its copy of this list is eyes-toolbox `docs/scenarios.md`.
 
+## Truth scenarios (David, 10-16)
+Complete logs that a strict package-only chain would call broken; each records a correct Android behaviour that a rule must accept. Tags:
+- **S7** — three screens of one app (R P R P R S S P S): late Stopped of earlier screens.
+- **S8** — **double resumes, same screen** (R R P S P S, one class): every event written twice.
+- **S9** — **double resumes, two screens** (R R P S P S, two classes): a floating window, or a second display.
+
 ## Scenario label (David, 10-10: "for each representative scenario, we need to label it")
 For each level, what is missing from the log. David's example (S1): "for App, the YouTube resume is lost; for device status, the screen-interactive is lost".
 - **Levels (David, 10-10):** three levels of events.
@@ -198,7 +204,7 @@ For each level, what is missing from the log. David's example (S1): "for App, th
 ---
 
 ## S7. Three screens of one app, logged as R P R P R S S P S (EyesApp, LiSiYu's RedMi) — Truth
-- **Label: Truth** (David, 10-16). Nothing is lost and nothing is wrong. This is how Android logs an app moving through its own screens, and the reading below is the true one.
+- **Label: Truth** (David, 10-16). **Tag: three screens of one app, late Stopped.** Nothing is lost and nothing is wrong. This is how Android logs an app moving through its own screens, and the reading below is the true one.
 - **Problem it illustrates:** a correct log that a strict package-only chain would call broken. Chronicle drops the class name, so an app passing through three of its own screens shows, for one package: Resumed → Paused → Resumed → Paused → Resumed → Stopped → Stopped → Paused → Stopped. The two Stopped belong to the first two screens. They arrive while the third screen of the same app is in front, and that screen's own Paused comes later. A chain that takes "Stopped of the app in front, no Paused" as a failure stops there. In the chain method (claude/chain-method-1015.md) that put the boundary of an EventLost block at the wrong place (4103_C01, below).
 - **Where:** LiSiYu RedMi (Xiaomi 2510DRK44C, Android 16, EyesApp 1.9; device 0c4878d3), 2026-10-07, Asia/Shanghai. WeChat (com.tencent.mm).
 - **Event trace (local time; class names as EyesApp logs them, Chronicle would keep only the package):**
@@ -248,3 +254,76 @@ For each level, what is missing from the log. David's example (S1): "for App, th
 | App: small window, car projection, foreground service | none |
 
   Cause: none (Android's normal order for screens of one app). Edge: inside. Inferred: WeChat in front 17:02:04.784 → 17:03:06.121. Confidence: certain (class names).
+
+---
+
+## S8. Double resumes, same screen (EyesApp, SamG24) — Truth
+- **Label: Truth.** **Tag: double resumes, same screen** (David, 10-16).
+- **Problem it illustrates:** Android writes every event of one screen twice, a few milliseconds apart. For one package the log reads Resumed → Resumed → Paused → Stopped → Paused → Stopped. Without class names it looks like two screens of the app, or a lost Paused between the two Resumed. With class names it is one screen: the same class each time. Nothing is lost; the right reading merges each pair.
+- **Where:** SamG24 (Samsung SM-S926U1, Android 16, EyesApp; device b566b43f), 2026-10-10, America/New_York. Samsung home screen (com.sec.android.app.launcher).
+- **Event trace (local time; class names as EyesApp logs them):**
+
+| Time | Event | Package | Class (not in Chronicle) |
+|---|---|---|---|
+| 16:06:29.872 | Activity Resumed | home screen | **Launcher** |
+| 16:06:30.034 | Activity Paused | WhatsApp | VerifyPhoneNumber |
+| 16:06:30.037 | Activity Resumed | home screen | **Launcher** (again, 165 ms later) |
+| 16:06:30.309 | Activity Stopped | WhatsApp | VerifyPhoneNumber |
+| 16:06:30.474 | Activity Stopped | WhatsApp | VerifyPhoneNumber (again) |
+| 16:06:30 – 16:16:34 | home screen in front | | |
+| 16:16:34.273 | Activity Paused | home screen | Launcher |
+| 16:16:34.316 | Activity Stopped | home screen | Launcher |
+| 16:16:34.438 | Activity Paused | home screen | Launcher (again) |
+| 16:16:34.481 | Activity Stopped | home screen | Launcher (again) |
+
+- **Reading:** one screen, home screen in front 16:06:29.872 → 16:16:34.273. Every event of it, and the Stopped of the app it replaced, is written twice. EyesApp drops exact duplicates; these have different timestamps, so Android wrote them twice. Why is not known yet.
+- **How common (EyesApp, to 10-16):** the same screen, same event twice within 1 s with nothing of that screen between: LiMingXuan Kids OPPO tablet (OPD2102, Android 13) 2,978 of 9,973 activity events (30%); SamG24 803 of 4,137 (19%, every day from 10-07); other devices 0–19. Gap: median 5 ms, 90% under 165 ms. Same on SamG24 for Chrome, 2026-10-11 14:50:42 / 15:00:42.
+- **In Chronicle (A1):** the package sequence R R P S P S occurs 47 times in 16 kids-tablet files (home screen, Settings, call screen, Disney+, Roblox); without class names this case and S9 look the same.
+- **Rule:** order only: R R P S P S pairs as R1 R2 P1 S1 P2 S2, which the chain already accepts (a hand-over where the next screen Resumes before the first Pauses). Time in front is the same either way, since the two copies overlap. For counting screens or switches, merge a same-package pair with nothing of that package between.
+- **Patterns:** proposed C10 (double resumes, same screen).
+- **Scenario label:**
+
+| Level | Status |
+|---|---|
+| Power | none |
+| Device state | complete |
+| App: in front | complete (**Truth**, double resumes, same screen); in Chronicle, not logged: activity class name |
+| App: small window, car projection, foreground service | none |
+
+  Cause: Android writes the events twice (reason unknown; two devices). Edge: inside. Inferred: home screen in front 16:06:29.872 → 16:16:34.273. Confidence: certain (class names).
+
+---
+
+## S9. Double resumes, two screens (EyesApp, SamG24) — Truth
+- **Label: Truth.** **Tag: double resumes, two screens** (David, 10-16).
+- **Problem it illustrates:** two different screens of one app are Resumed one after the other, the second before the first Pauses. For one package the log reads Resumed → Resumed → Paused → Stopped → Paused → Stopped, the same as S8. Here the classes differ: a pass-through screen opens a floating window, and the window stays Resumed even while another app comes to the front. Nothing is lost.
+- **Where:** SamG24 (Samsung SM-S926U1, Android 16, EyesApp; device b566b43f), 2026-10-05, America/New_York. Tencent app store (com.tencent.android.qqdownloader).
+- **Event trace (local time; class names as EyesApp logs them):**
+
+| Time | Event | Package | Class (not in Chronicle) |
+|---|---|---|---|
+| 21:01:45.689 | Activity Resumed | app store | **LinkProxyActivity** (pass-through, screen 1) |
+| 21:01:45.739 | Activity Resumed | app store | **PhotonWindowSupportActivity** (floating window, screen 2) |
+| 21:01:45.743 | Activity Paused | app store | LinkProxyActivity |
+| 21:01:45.743 | Activity Resumed | home screen | Launcher (other app; the window stays Resumed) |
+| 21:01:45.999 | Activity Stopped | app store | LinkProxyActivity |
+| 21:01:55.860 | Activity Paused | app store | PhotonWindowSupportActivity |
+| 21:01:56.023 | Activity Stopped | app store | PhotonWindowSupportActivity |
+
+- **Reading:** two triplets: LinkProxyActivity 45.689 → 45.743 → 45.999; PhotonWindowSupportActivity 45.739 → 55.860 → 56.023. For 10 s the floating window and the home screen are both Resumed.
+- **A second form, two displays (Android Auto, E6):** SamG24, 2026-10-07: Google Maps GhostActivity (the car screen) Resumed 09:40:31.169; Maps MapsActivity (the phone) Resumed 09:40:40.123, Paused 09:40:43.408, Stopped 09:40:43.872; GhostActivity Paused 09:41:44.213, Stopped 09:41:44.245.
+- **How common (EyesApp, to 10-16):** R R P S P S for one package 70 times in all; with class names, the app store 9 times (always LinkProxyActivity → PhotonWindowSupportActivity), Maps 4 (car screen), the rest mostly S8 (same screen).
+- **Rule:** the same order-only pairing as S8. Here both screens are real: the floating window counts as on screen until its Paused, beside whatever app is in front (as a small window, C1).
+- **Patterns:** C1 (small window), E6 (Android Auto), proposed C11 (double resumes, two screens).
+- **Scenario label:**
+
+| Level | Status |
+|---|---|
+| Power | none |
+| Device state | complete |
+| App: in front | complete (**Truth**, double resumes, two screens); in Chronicle, not logged: activity class name |
+| App: small window | complete (the floating window, 21:01:45.739 → 21:01:55.860) |
+| App: car projection (second form) | complete |
+| App: foreground service | none |
+
+  Cause: none (a floating window / a second display). Edge: inside. Inferred: app store window 21:01:45.739 → 21:01:55.860, home screen in front from 21:01:45.743. Confidence: certain (class names).
