@@ -1740,7 +1740,7 @@ function blkRows(it) {
   const nb = L => L.filter(e => e[0] === null || !mine.has(key(e)));
   const seen = new Set(), ev = [...nb(P.slice().reverse().flatMap(x => x.events)), ...own, ...nb(N.flatMap(x => x.events))]
     .filter(e => { const k = key(e); if (k === null || mine.has(k)) return true; if (seen.has(k)) return false; seen.add(k); return true; });
-  const BM = blockMarks(ev, blocks.filter(b => b.t1 - b.t0 > 1e-3));
+  const BM = blockMarks(ev, blocks.filter(b => b.t1 - b.t0 > 1e-3)), TC = tripletColors(ev);
   let prev = null;
   return ev.map((e, ei) => {
     if (e[0] === null) return `<tr><td colspan="5" class="small" style="text-align:center">${esc(e[1])}</td></tr>`;
@@ -1750,7 +1750,7 @@ function blkRows(it) {
     if (!bl) bl = e[0] < blocks[0].t0 ? "before" : "after";
     const nbr = e[3] === "nbr" || (bl !== it.block && !bm);
     const cls = "r-" + (e[3] === "nbr" ? "before" : e[3]) + (POWER.has(e[1]) ? " r-power" : "") + (bm ? " r-bound" : "");
-    return `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${d}</td><td>${esc(e[1])}${e[3] === "first" ? " ✗" : ""}</td><td>${esc(e[2])}</td><td>${bm ? `<span class="bound-lab">${esc(bm)}</span>` : `<span class="small">${esc(bl)}</span>`}</td></tr>`;
+    return `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${d}</td><td>${tripCell(e, TC.get(ei))}${e[3] === "first" ? " ✗" : ""}</td><td>${esc(e[2])}</td><td>${bm ? `<span class="bound-lab">${esc(bm)}</span>` : `<span class="small">${esc(bl)}</span>`}</td></tr>`;
   }).join("");
 }
 async function blkMore(it, dir) {
@@ -1765,6 +1765,33 @@ async function blkMore(it, dir) {
     if (dir === "prev") box.scrollTop += box.scrollHeight - h0;                     // keep the view where it was
     btn.textContent = (dir === "prev" ? "▲ Show the block before " : "▼ Show the block after ") + `(loaded: ${L.map(x => x.b.block).join(", ")})`;
   } catch (e) { btn.textContent = "Error: " + e.message; }
+}
+
+// Triplet colours (David, 10-17): pair Resumed -> Paused -> Stopped per app with a FIFO queue: every Resumed opens a
+// triplet (S7: three screens show as three triplets), Paused completes the oldest Resumed one, Stopped the oldest Paused
+// one. A returning screen shows as a new triplet, its first one left without a Stopped. Unpaired events stay uncoloured.
+// Six colours, cycled; red is kept for block boundaries.
+const TRIP_COLORS = ["#1565c0", "#2e7d32", "#ef6c00", "#6a1b9a", "#00838f", "#8d6e63"];
+function tripletColors(events) {
+  const out = new Map(), q = {}; let n = 0;
+  events.forEach((e, i) => {
+    if (e[0] === null || !String(e[1]).startsWith("Activity")) return;
+    const ev = String(e[1]).split("  [")[0], app = e[2], Q = q[app] = q[app] || [];
+    if (ev === "Activity Resumed") {
+      const tr = {n: ++n, s: "R"}; Q.push(tr); out.set(i, tr.n);
+    } else if (ev === "Activity Paused") {
+      const tr = Q.find(x => x.s === "R"); if (tr) { tr.s = "P"; out.set(i, tr.n); }
+    } else if (ev === "Activity Stopped") {
+      const tr = Q.find(x => x.s === "P");
+      if (tr) { out.set(i, tr.n); Q.splice(Q.indexOf(tr), 1); }
+    }
+  });
+  return out;
+}
+function tripCell(e, tn) {
+  if (!tn) return esc(e[1]);
+  const c = TRIP_COLORS[(tn - 1) % TRIP_COLORS.length];
+  return `<span style="color:${c};font-weight:600">● ${esc(e[1])}</span> <span class="small" style="color:${c}">T${tn}</span>`;
 }
 const BLK_WHY = {
   "resumed, previous app never Paused": "An app Resumed while the app before it was still waiting for its Paused, and another Resumed came: that Paused is missing.",
@@ -1806,13 +1833,13 @@ async function openSch(id, noflush) {
   const startTxt = it.chain_start === "Bootup" ? "Bootup" : `LogStart <span class="small">(${esc(it.chain_start_by === "file start" ? "start of the file" : "after a shutdown, no boot logged")})</span>`;
   const endTxt = it.chain_end === "Shutdown" ? "Shutdown" : `LogEnd <span class="small">(${esc(it.chain_end_by === "file end" ? "end of the file" : "before a boot, no shutdown logged")})</span>`;
   let prev = null;
-  const B = it.blocks || [], BM = blockMarks(it.events, B.filter(b => b.t1 - b.t0 > 1e-3));
+  const B = it.blocks || [], BM = blockMarks(it.events, B.filter(b => b.t1 - b.t0 > 1e-3)), TC = tripletColors(it.events);
   const rows = it.events.map((e, ei) => {
     if (e[0] === null) return `<tr><td colspan="5" class="small" style="text-align:center">${esc(e[1])}</td></tr>`;
     const d = prev === null ? "" : schDur(e[0] - prev); prev = e[0];
     const bm = BM.get(ei) || "", mark = "", bl = blockOf(e[0], B.filter(b => b.t1 - b.t0 > 1e-3));
     const cls = "r-" + e[3] + (POWER.has(e[1]) ? " r-power" : "") + (bm ? " r-bound" : "");
-    return mark + `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${d}</td><td>${esc(e[1])}${e[3] === "first" ? " ①" : e[3] === "second" ? " ②" : ""}</td><td>${esc(e[2])}</td><td>${bm ? `<span class="bound-lab">${esc(bm)}</span>` : `<span class="small">${esc(bl)}</span>`}</td></tr>`;
+    return mark + `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${d}</td><td>${tripCell(e, TC.get(ei))}${e[3] === "first" ? " ①" : e[3] === "second" ? " ②" : ""}</td><td>${esc(e[2])}</td><td>${bm ? `<span class="bound-lab">${esc(bm)}</span>` : `<span class="small">${esc(bl)}</span>`}</td></tr>`;
   }).join("");
   const blkCard = B.length ? `<div class="card"><h2>Blocks made from this contradiction</h2><table class="sch-ev"><thead><tr><th>Block</th><th>Start</th><th>End</th><th class="num">Length</th><th>Lost events</th></tr></thead><tbody>${
     B.map(b => `<tr${b.block === "EventLost" ? ' class="r-first"' : ""}><td><b>${esc(b.block)}</b><div class="small">${esc(b.id.split("/").slice(1).join("/"))}</div></td><td>${esc(fmt(b.t0, tz, "mdt"))}<div class="small">${esc(b.start_by)}</div></td><td>${esc(fmt(b.t1, tz, "mdt"))}<div class="small">${esc(b.end_by)}</div></td><td class="num">${schDur(b.t1 - b.t0)}</td><td class="small">${esc(b.lost)}</td></tr>`).join("")
@@ -1872,7 +1899,7 @@ function openBlk(it, k, vis) {
       ${it.why ? `<span>Contradiction</span><span>${esc(it.why)}</span>` : ""}
       ${it.lost ? `<span>Lost events</span><span>${esc(it.lost)}</span>` : ""}
       <span class="small">Inside</span><span class="small">Power Cycle #${it.chain + 1} (for reference only)</span></div></div>
-    <div class="card"><h2>Events</h2><div class="small" style="margin-bottom:6px">Only this block's events, with a few before and after in grey. <b style="color:#c62828">Red rows: the block's start (▶) and end (■).</b> ✗ highlighted: the failing events. Blue: boot / shutdown. Notifications and standby-bucket changes left out.</div>
+    <div class="card"><h2>Events</h2><div class="small" style="margin-bottom:6px">Only this block's events, with a few before and after in grey. <b style="color:#c62828">Red rows: the block's start (▶) and end (■).</b> Colours (● T<i>n</i>): the Resumed, Paused and Stopped of one triplet; uncoloured activity events have no partner. ✗ highlighted: the failing events. Blue: boot / shutdown. Notifications and standby-bucket changes left out.</div>
       <button id="blk-up" class="small" style="margin:4px 0">▲ Show the block before</button>
       <div class="events" style="max-height:none"><table class="sch-ev"><thead><tr><th>Time</th><th class="num">After previous</th><th>Event</th><th>App</th><th>Block</th></tr></thead><tbody id="blk-rows">${rows}</tbody></table></div>
       <button id="blk-down" class="small" style="margin:4px 0">▼ Show the block after</button></div>`;
