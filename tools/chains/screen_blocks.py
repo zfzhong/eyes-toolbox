@@ -156,6 +156,7 @@ for f in sorted(glob.glob(os.path.join(folder, "processed", "*_sorted_uniq_reord
     if not os.path.exists(pf): continue
     P = pd.read_csv(pf)
     ev = ds.load_events(f); t = ev.t.to_numpy(); nm = ev.name.to_numpy(); pk = ev.app_package_name.astype(str).to_numpy()
+    tz = pd.read_csv(f, usecols=["timezone"], nrows=1).timezone.iloc[0] or "UTC"
     allB = []
     for ci, c in P.iterrows():
         i0, i1 = np.searchsorted(t, c.start_t - 1e-3, "left"), np.searchsorted(t, c.end_t + 1e-3, "right")   # CSV rounding
@@ -163,8 +164,15 @@ for f in sorted(glob.glob(os.path.join(folder, "processed", "*_sorted_uniq_reord
         Bs = blocks_of(t[i0:i1], nm[i0:i1], pk[i0:i1], c, ci)
         allB += Bs
     Bdf = pd.DataFrame(allB); Bdf["h"] = (Bdf.end_t - Bdf.start_t) / 3600
-    # block id (10-16): <file>/P<Power Cycle, from 1>/B<block within it, from 1>, e.g. 4103_C01_AndroidTab/P5/B3
-    Bdf.insert(0, "block_id", [f"{pid}/P{c + 1}/B{k + 1}" for c, k in zip(Bdf.cycle, Bdf.groupby("cycle").cumcount())])
+    # block id (David, 10-17): <file>/P<Power Cycle>/<block start, local time to the ms>. The start time is the block's
+    # local id inside its Power Cycle: splitting a block later gives new start times that cannot collide, and blocks
+    # sort by it. Two blocks starting at the same instant (a 0-second block, e.g. the boot's ScreenOn) get the type added.
+    loc = pd.to_datetime((Bdf.start_t * 1000).round().astype("int64"), unit="ms", utc=True).dt.tz_convert(tz).dt.strftime("%Y-%m-%dT%H:%M:%S.%f").str[:-3]
+    bid = [f"{pid}/P{c + 1}/{l}" for c, l in zip(Bdf.cycle, loc)]
+    dup = pd.Series(bid).duplicated(keep=False).to_numpy()
+    bid = [b + (f"-{k}" if d else "") for b, d, k in zip(bid, dup, Bdf.block)]
+    n = pd.Series(bid).groupby(bid).cumcount().to_numpy()   # still equal (two 0-second blocks of one type): -2, -3 ...
+    Bdf.insert(0, "block_id", [b + (f"-{m + 1}" if m else "") for b, m in zip(bid, n)])
     Bdf.to_csv(os.path.join(out, f"screen_blocks_{pid}.csv"), index=False)
     k = Bdf.block.value_counts(); h = Bdf.groupby("block").h.sum()
     lst = Bdf[Bdf.block == "EventLost"]
