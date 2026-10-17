@@ -69,7 +69,7 @@ STATE_DIR = os.environ.get("EYES_A1_DIR", os.path.expanduser("~/workspace/screen
 STATE_VERDICTS = {"screen-off lost", "screen-on lost", "hidden power cycle", "duplicate screen event", "logging gap", "other", "unsure",
                   # app-chain failures inside device-state blocks (block_review.json, 10-16)
                   "Paused lost", "Resumed lost", "Stopped lost", "kill", "app over lock screen", "background launch", "duplicate event",
-                  "device-specific"}
+                  "device-specific", "long use", "logging gap: screen-off and screen-on lost", "power cycle lost"}
 
 
 def load_scenarios(path=SCENARIOS_MD):
@@ -671,9 +671,10 @@ class Handler(BaseHTTPRequestHandler):
             with open(fn) as fh:
                 d = json.load(fh)
             items += d["items"]; totals[d["folder"]] = d.get("totals", {})
-        for fn in sorted(glob.glob(os.path.join(STATE_DIR, "*", "_review", "eventlost_review.json"))):
-            with open(fn) as fh:
-                items += json.load(fh)["items"]
+        for name in ("eventlost_review.json", "long_screenon_review.json"):
+            for fn in sorted(glob.glob(os.path.join(STATE_DIR, "*", "_review", name))):
+                with open(fn) as fh:
+                    items += json.load(fh)["items"]
         con = self.db()
         saved = {r["id"]: dict(r) for r in con.execute("SELECT * FROM state_chain_review")}
         for it in items:

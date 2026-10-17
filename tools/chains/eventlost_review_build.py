@@ -13,8 +13,11 @@ APP = {"Activity Resumed", "Activity Paused", "Activity Stopped"}
 CTX, MAXMID = 6, 120
 for folder in sys.argv[1:]:
     folder = os.path.abspath(folder); out = os.path.join(folder, "_review"); items = []
-    for f in sorted(glob.glob(os.path.join(folder, "processed", "*_sorted_uniq_reordered.csv"))):
+    done = set()
+    for f in sorted({os.path.basename(g).split("_Chronicle")[0]: g for g in sorted(glob.glob(os.path.join(folder, "processed", "*_sorted_uniq_reordered.csv")))}.values()):   # the latest export per id, as the other scripts
         pid = os.path.basename(f).split("_Chronicle")[0]
+        if pid in done: continue
+        done.add(pid)
         bf, ff = os.path.join(out, f"screen_blocks_{pid}.csv"), os.path.join(out, f"block_fails_{pid}.csv")
         if not (os.path.exists(bf) and os.path.exists(ff)): continue
         B = pd.read_csv(bf); L = B[B.block == "EventLost"]

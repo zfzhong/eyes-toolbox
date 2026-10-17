@@ -263,7 +263,7 @@ input.bl-chk { margin: 0 6px 0 0; vertical-align: -2px; cursor: pointer; }
   <aside class="side">
     <div class="filters">
       <select id="sch-folder"></select>
-      <select id="sch-list-kind"><option value="repeat">Screen repeats</option><option value="eventlost">EventLost blocks with app events</option><option value="block">Inconsistent blocks (sample)</option></select>
+      <select id="sch-list-kind"><option value="repeat">Screen repeats</option><option value="eventlost">EventLost blocks with app events</option><option value="longon">Long ScreenOn blocks (&gt; 12 h, from a contradiction)</option><option value="block">Inconsistent blocks (sample)</option></select>
       <select id="sch-status"><option value="todo">To review</option><option value="done">Reviewed</option><option value="all" selected>All</option></select>
     </div>
     <div class="small" id="sch-count" style="padding: 6px 10px; border-bottom: 1px solid var(--line)"></div>
@@ -1679,7 +1679,8 @@ function renderSchList() {
     : `<b>${all.length}</b> contradictions in <b>${new Set(all.map(i => i.file)).size}</b> files · <b>${done}</b> reviewed`;
   if (lk === "eventlost") { const ni = all.filter(i => i.fail === "eventlost-fail").length, nf = all.filter(i => i.fail === "eventlost-inferred").length;
     $("#sch-count").innerHTML = `EventLost blocks with app events: <b>${ni}</b> Inconsistent, <b>${nf}</b> consistent with inferred events, <b>${all.length - ni - nf}</b> consistent · <b>${done}</b> reviewed`; }
-  if (lk === "block" || lk === "eventlost") { renderBlkList(vis); return; }
+  if (lk === "longon") $("#sch-count").innerHTML = `<b>${all.length}</b> ScreenOn blocks longer than 12 h made from a screen contradiction · <b>${done}</b> reviewed`;
+  if (lk === "block" || lk === "eventlost" || lk === "longon") { renderBlkList(vis); return; }
   let html = "", lastFile = null;
   for (const i of vis) {
     if (i.file !== lastFile) {
@@ -1700,7 +1701,7 @@ function renderBlkList(vis) {
     html += `<div class="item ${i.id === SCH.cur ? "cur" : ""}" data-id="${esc(i.id)}">
       <div><b>${esc(i.block_id || "")}</b> ${esc(i.block)} <span class="small">· ${esc(fmt(i.block_t0, i.tz, "mdt").slice(5, 19))} → ${esc(fmt(i.block_t1, i.tz, "mdt").slice(5, 19))}</span></div>
       <div>${i.verdict ? `<span class="pill v-keep">${esc(i.verdict)}</span>` : `<span class="pill">to review</span>`}</div>
-      <div class="sub">${esc(i.file)} · ${i.list === "eventlost" ? `${i.n_app} app events, ` : ""}${i.n_fail} failure${i.n_fail === 1 ? "" : "s"} · ${schDur(i.gap_s)}</div></div>`;
+      <div class="sub">${esc(i.file)} · ${i.list === "longon" ? `longest silence ${i.silence_h} h, ` : ""}${i.list === "eventlost" ? `${i.n_app} app events, ` : ""}${i.n_fail} failure${i.n_fail === 1 ? "" : "s"} · ${schDur(i.gap_s)}</div></div>`;
   }
   $("#sch-list").innerHTML = html || `<div class="empty">Nothing in this list. Run block_fails.py and block_review_build.py.</div>`;
 }
@@ -1764,7 +1765,8 @@ function blkRows(it) {
     if (!bl) bl = e[0] < blocks[0].t0 ? "before" : "after";
     const nbr = e[3] === "nbr" || (bl !== it.block && !bm);
     const cls = "r-" + (e[3] === "nbr" ? "before" : e[3]) + (POWER.has(e[1]) ? " r-power" : "") + (bm ? " r-bound" : "");
-    return `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${d}</td><td>${tripCell(e, TC.get(ei))}${unmatched.has(e[0].toFixed(3) + e[2]) && String(e[1]).startsWith("Activity Stopped") ? ' <span class="small" style="color:#757575;border:1px dashed #757575;padding:0 3px">Stopped(unmatched)</span>' : ""}${e[3] === "first" ? " ✗" : ""}</td><td>${esc(e[2])}</td><td>${bm ? `<span class="bound-lab">${esc(bm)}</span>` : `<span class="small">${esc(bl)}</span>`}</td></tr>`;
+    const dc = it.silence_t1 && Math.abs(e[0] - it.silence_t1) < 1e-3 ? `<b style="color:#c62828">${d} ⟵ longest silence</b>` : d;
+    return `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${dc}</td><td>${tripCell(e, TC.get(ei))}${unmatched.has(e[0].toFixed(3) + e[2]) && String(e[1]).startsWith("Activity Stopped") ? ' <span class="small" style="color:#757575;border:1px dashed #757575;padding:0 3px">Stopped(unmatched)</span>' : ""}${e[3] === "first" ? " ✗" : ""}</td><td>${esc(e[2])}</td><td>${bm ? `<span class="bound-lab">${esc(bm)}</span>` : `<span class="small">${esc(bl)}</span>`}</td></tr>`;
   }).join("");
 }
 async function blkMore(it, dir) {
@@ -1813,9 +1815,11 @@ const BLK_WHY = {
   "stopped in front, no Paused": "The app in front was Stopped with no Paused: a kill (force-stop, crash; C8) or a lost Paused.",
   "stopped twice": "A Stopped with no Paused-not-Stopped screen of that app: a lost Paused, or a duplicate Stopped.",
   "eventlost-fail": "Inconsistent block: the app chain (FIFO triplet queue) fails inside, and at least one failure has two readings (a kill or a lost Paused; a Stopped with nothing to stop). Failing events are marked ✗; failures with one reading show their inferred event (italic, dashed). What happened?",
+  "longon": "A ScreenOn block longer than 12 h, made from a screen contradiction: event order says the screen was on throughout, but most of it may be one long silence. Long use, or were a screen-off and a screen-on (or a power cycle) both lost in the silence?",
   "eventlost-inferred": "Consistent with inferred events: the chain fails inside this EventLost block, but each failure has one reading, so the lost event is inferred (italic, dashed: Paused(infer) / Resumed(infer), no time) and the chain goes on. Check the inferences.",
   "eventlost-ok": "Consistent app events inside an EventLost block: they form consistent chains, but the construction from the block's edge failed before reaching them.",
   "resumed in ScreenOff": "An app Resumed while the screen was off: a lost screen-on, an app over the lock screen (alarm, call), or a background launch."};
+const BLK_V_LONG = ["long use", "logging gap: screen-off and screen-on lost", "power cycle lost", "other", "unsure"];
 const BLK_V = ["Paused lost", "Resumed lost", "Stopped lost", "kill", "screen-on lost", "app over lock screen", "background launch", "duplicate event", "device-specific", "logging gap", "other", "unsure"];
 $("#sch-list").onclick = e => { const it = e.target.closest(".item"); if (it) openSch(it.dataset.id); };
 ["#sch-folder", "#sch-status", "#sch-list-kind"].forEach(id => $(id).onchange = () => { renderSchList(); const v = schVisible(); if (v[0]) openSch(v[0].id); });
@@ -1844,7 +1848,7 @@ async function openSch(id, noflush) {
   }
   SCH.cur = id; renderSchList(); history.replaceState(null, "", "#sch-" + encodeURIComponent(id));
   const vis = schVisible(), k = vis.findIndex(i => i.id === id), tz = it.tz;
-  if (it.list === "block" || it.list === "eventlost") return openBlk(it, k, vis);
+  if (it.list === "block" || it.list === "eventlost" || it.list === "longon") return openBlk(it, k, vis);
   const startTxt = it.chain_start === "Bootup" ? "Bootup" : `LogStart <span class="small">(${esc(it.chain_start_by === "file start" ? "start of the file" : "after a shutdown, no boot logged")})</span>`;
   const endTxt = it.chain_end === "Shutdown" ? "Shutdown" : `LogEnd <span class="small">(${esc(it.chain_end_by === "file end" ? "end of the file" : "before a boot, no shutdown logged")})</span>`;
   let prev = null;
@@ -1903,7 +1907,7 @@ function openBlk(it, k, vis) {
     <div class="sc-problem"><span class="lab">The failure</span>${esc(BLK_WHY[it.fail] || it.fail)}
       ${it.n_fail} failure${it.n_fail > 1 ? "s" : ""} of this kind in this block (✗); ${it.n_kind_total.toLocaleString()} of this kind in this category. Times in ${esc(tz)}.</div>
     <div class="card"><h2>Your verdict: the cause</h2>
-      <div class="vbtns">${BLK_V.map(v => `<button data-v="${esc(v)}" class="${it.verdict === v ? "on" : ""}">${esc(v)}</button>`).join("")}</div>
+      <div class="vbtns">${(it.list === "longon" ? BLK_V_LONG : BLK_V).map(v => `<button data-v="${esc(v)}" class="${it.verdict === v ? "on" : ""}">${esc(v)}</button>`).join("")}</div>
       <textarea id="sch-text" rows="3" style="width:100%" placeholder="What caused the failure? Which event was lost?">${esc(it.comment)}</textarea>
       <div class="small" id="sch-state" style="margin-top:4px">${it.updated_at ? `Saved ${esc(it.updated_at.replace("T", " "))}` : "Verdict and comment save as you go."}</div></div>
     <div class="card"><h2>The block</h2><div class="kv">
@@ -1912,6 +1916,7 @@ function openBlk(it, k, vis) {
       <span>End</span><span>${esc(fmt(it.block_t1, tz, "mdt"))} · ${esc(it.block_end_by)}</span>
       <span>Length</span><span>${schDur(it.gap_s)}, ${it.n_between} events</span>
       ${it.why ? `<span>Contradiction</span><span>${esc(it.why)}</span>` : ""}
+      ${it.silence_h !== undefined ? `<span>Longest silence</span><b style="color:#c62828">${it.silence_h} h · ${esc(fmt(it.silence_t0, tz, "mdt"))} → ${esc(fmt(it.silence_t1, tz, "mdt"))}</b>` : ""}
       ${it.lost ? `<span>Lost events</span><span>${esc(it.lost)}</span>` : ""}
       <span class="small">Inside</span><span class="small">Power Cycle #${it.chain + 1} (for reference only)</span></div></div>
     <div class="card"><h2>Events</h2><div class="small" style="margin-bottom:6px">Only this block's events, with a few before and after in grey. <b style="color:#c62828">Red rows: the block's start (▶) and end (■).</b> Colours (● T<i>n</i>): the Resumed, Paused and Stopped of one triplet; uncoloured activity events have no partner. ✗ highlighted: the failing events. Blue: boot / shutdown. Notifications and standby-bucket changes left out.</div>
