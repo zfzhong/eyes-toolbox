@@ -71,9 +71,14 @@ def run_until_fail(idx, nm, pk, lead=("Activity Stopped",)):
     after chain (a chain that ended properly may be followed by a new Resumed), and return how many events follow
     logically before the first one that does not. Same rules as app_chains. Before the first Resumed, the events in
     lead are accepted: their screens began before idx (a Stopped of a screen Paused earlier; going back from a
-    screen-off, also a Paused of an app Resumed earlier). Later, a Stopped of an app not yet seen in idx is accepted too.
-    (Its Paused came before idx.)"""
+    screen-off, also a Paused of an app Resumed earlier). Later, a Stopped of an app not yet seen in idx is accepted too
+    (its Paused came before idx), and so is a Stopped of the app in front whose own Paused comes later (10-16, David: "we
+    need a bit flexibility when constructing triplets"; 4103_C01: three Chrome screens R P R P R S S P S)."""
     front = pending = None; waiting = {}; seen_r = False; seen = set()
+    nxt = {}; later = [None] * len(idx)                 # the next event of the same app, for each position
+    for n in range(len(idx) - 1, -1, -1):
+        later[n] = nxt.get(pk[idx[n]])                  # the next Resumed / Paused of that app (Stopped skipped)
+        if nm[idx[n]] != "Activity Stopped": nxt[pk[idx[n]]] = nm[idx[n]]
     for n, k in enumerate(idx):
         e, x = nm[k], pk[k]; ok = False
         if not seen_r and e in lead:
@@ -90,6 +95,9 @@ def run_until_fail(idx, nm, pk, lead=("Activity Stopped",)):
         elif e == "Activity Stopped":
             if waiting.get(x, 0) > 0: waiting[x] -= 1; ok = True
             elif x not in seen: ok = True               # its Paused came before idx
+            elif (x == front or x == pending) and later[n] == "Activity Paused":
+                ok = True                               # (10-16) the front screen of x is still open (its Paused comes
+                                                        # later): this Stopped is an earlier screen's, Paused before idx
         if not ok: return n
         seen.add(x)
     return len(idx)
@@ -145,18 +153,26 @@ def blocks_of(t, nm, pk, cyc, ci):
             else:
                 blk("EventLost", a_, ON, b_, ON, "two Screen Interactive, no app chain between", "Screen Non-interactive")
         else:
-            # mirror: the screen came on somewhere before the first app event; from that event it is on up to the screen-off
+            # mirror. (10-16) Forward from the first screen-off: the Paused / Stopped of the apps it sent away, up to the
+            # first Resumed (a Resumed needs the screen on). Backward from the second screen-off: the earliest event from
+            # which all follows. EventLost is what lies between: the silent stretch where the Screen Interactive was lost.
             ai = [k for k in range(a_ + 1, b_) if nm[k] in APP]
-            s0 = len(ai)                                # mirror: going back from the second screen-off, the earliest
-            while s0 > 0 and run_until_fail(ai[s0 - 1:], nm, pk, ("Activity Paused", "Activity Stopped")) == len(ai) - s0 + 1: s0 -= 1   # event from which all follows
-            ch = s0 < len(ai)
-            if ch:
+            f_end = next((j for j, k in enumerate(ai) if nm[k] == "Activity Resumed"), len(ai))
+            s0 = len(ai)
+            while s0 > f_end and run_until_fail(ai[s0 - 1:], nm, pk, ("Activity Paused", "Activity Stopped")) == len(ai) - s0 + 1: s0 -= 1
+            first = a_
+            if f_end > 0:
+                blk("ScreenOff", a_, OFF, ai[f_end - 1], "EventLost", "two Screen Non-interactive")
+                first = ai[f_end - 1]
+            fb = OFF if first == a_ else "EventLost"
+            if s0 < len(ai):
                 start = ai[s0]
                 lost = "Screen Interactive" + (f", Activity Resumed {pk[start]}" if nm[start] != "Activity Resumed" else "")
-                blk("EventLost", a_, OFF, start, "EventLost", "two Screen Non-interactive", lost)
+                if start != first:
+                    blk("EventLost", first, fb, start, "EventLost", "two Screen Non-interactive", lost)
                 blk("ScreenOn", start, "EventLost", b_, OFF, "two Screen Non-interactive")
             else:
-                blk("EventLost", a_, OFF, b_, OFF, "two Screen Non-interactive, no app chain between", "Screen Interactive")
+                blk("EventLost", first, fb, b_, OFF, "two Screen Non-interactive, no app chain between", "Screen Interactive")
     last = scr[-1]
     if last < len(nm) - 1 or len(scr) == 1:
         blk("ScreenOn" if nm[last] == ON else "ScreenOff", last, nm[last], len(nm) - 1, cyc.end)

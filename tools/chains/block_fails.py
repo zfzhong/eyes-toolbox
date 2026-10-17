@@ -22,7 +22,11 @@ folder = os.path.abspath(sys.argv[1]); out = os.path.join(folder, "_review")
 def walk(idx, nm, pk, lead=("Activity Stopped",)):
     """Construction with restarts. Returns [(index, failure kind, app in front or None)]."""
     fails = []; front = pending = None; waiting = collections.Counter(); seen = set(); seen_r = False
-    for k in idx:
+    nxt = {}; later = [None] * len(idx)
+    for n in range(len(idx) - 1, -1, -1):
+        later[n] = nxt.get(pk[idx[n]])                  # the next Resumed / Paused of that app (Stopped skipped)
+        if nm[idx[n]] != "Activity Stopped": nxt[pk[idx[n]]] = nm[idx[n]]
+    for n, k in enumerate(idx):
         e, x = nm[k], pk[k]
         if not seen_r and e in lead:
             if e == "Activity Paused": waiting[x] += 1
@@ -40,6 +44,7 @@ def walk(idx, nm, pk, lead=("Activity Stopped",)):
         else:
             if waiting[x] > 0: waiting[x] -= 1
             elif x not in seen: pass
+            elif (x == front or x == pending) and later[n] == "Activity Paused": pass   # an earlier screen's Stopped (10-16)
             elif x == front or x == pending:
                 why = "stopped in front, no Paused"; fr = x
                 if x == front: front = None
