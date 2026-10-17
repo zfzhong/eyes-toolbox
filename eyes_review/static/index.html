@@ -259,7 +259,7 @@ input.bl-chk { margin: 0 6px 0 0; vertical-align: -2px; cursor: pointer; }
   <aside class="side">
     <div class="filters">
       <select id="sch-folder"></select>
-      <select id="sch-list-kind"><option value="repeat">Screen repeats</option><option value="block">App-chain failures in blocks</option></select>
+      <select id="sch-list-kind"><option value="repeat">Screen repeats</option><option value="block">App-chain failures in blocks</option><option value="eventlost">EventLost blocks with app events</option></select>
       <select id="sch-status"><option value="todo">To review</option><option value="done">Reviewed</option><option value="all" selected>All</option></select>
     </div>
     <div class="small" id="sch-count" style="padding: 6px 10px; border-bottom: 1px solid var(--line)"></div>
@@ -1673,7 +1673,8 @@ function renderSchList() {
   $("#sch-count").innerHTML = lk === "block"
     ? `<b>${all.length}</b> sampled blocks (up to 12 per block type × failure) in <b>${new Set(all.map(i => i.file)).size}</b> files · <b>${done}</b> reviewed`
     : `<b>${all.length}</b> contradictions in <b>${new Set(all.map(i => i.file)).size}</b> files · <b>${done}</b> reviewed`;
-  if (lk === "block") { renderBlkList(vis); return; }
+  if (lk === "eventlost") $("#sch-count").innerHTML = `<b>${all.length}</b> EventLost blocks with app events inside, in <b>${new Set(all.map(i => i.file)).size}</b> files · <b>${done}</b> reviewed`;
+  if (lk === "block" || lk === "eventlost") { renderBlkList(vis); return; }
   let html = "", lastFile = null;
   for (const i of vis) {
     if (i.file !== lastFile) {
@@ -1694,7 +1695,7 @@ function renderBlkList(vis) {
     html += `<div class="item ${i.id === SCH.cur ? "cur" : ""}" data-id="${esc(i.id)}">
       <div>${esc(i.file)} <span class="small">· Power Cycle ${i.chain}</span></div>
       <div>${i.verdict ? `<span class="pill v-keep">${esc(i.verdict)}</span>` : `<span class="pill">to review</span>`}</div>
-      <div class="sub">${esc(fmt(i.t1, i.tz, "mdt").slice(0, 16))} · ${i.n_fail} failure${i.n_fail > 1 ? "s" : ""} · block ${schDur(i.gap_s)}</div></div>`;
+      <div class="sub">${esc(fmt(i.t1, i.tz, "mdt").slice(0, 16))} · ${i.list === "eventlost" ? `${i.n_app} app events, ` : ""}${i.n_fail} failure${i.n_fail === 1 ? "" : "s"} · block ${schDur(i.gap_s)}</div></div>`;
   }
   $("#sch-list").innerHTML = html || `<div class="empty">Nothing in this list. Run block_fails.py and block_review_build.py.</div>`;
 }
@@ -1703,6 +1704,8 @@ const BLK_WHY = {
   "paused, app not in front": "An app Paused that was not Resumed in this run: its Resumed is missing, or it was in front from before the block.",
   "stopped in front, no Paused": "The app in front was Stopped with no Paused: a kill (force-stop, crash; C8) or a lost Paused.",
   "stopped twice": "A Stopped with no Paused-not-Stopped screen of that app: a lost Paused, or a duplicate Stopped.",
+  "eventlost-fail": "This EventLost block is not silent: it has app events inside, and the app chain fails among them (failing events marked ✗ with the kind). Why was the boundary not placed later?",
+  "eventlost-ok": "This EventLost block is not silent: its app events form consistent chains, but the construction from the block edge failed before reaching them.",
   "resumed in ScreenOff": "An app Resumed while the screen was off: a lost screen-on, an app over the lock screen (alarm, call), or a background launch."};
 const BLK_V = ["Paused lost", "Resumed lost", "Stopped lost", "kill", "screen-on lost", "app over lock screen", "background launch", "duplicate event", "device-specific", "logging gap", "other", "unsure"];
 $("#sch-list").onclick = e => { const it = e.target.closest(".item"); if (it) openSch(it.dataset.id); };
@@ -1795,6 +1798,7 @@ function openBlk(it, k, vis) {
       <span>Start</span><span>${esc(fmt(it.block_t0, tz, "mdt"))} · ${esc(it.block_start_by)}</span>
       <span>End</span><span>${esc(fmt(it.block_t1, tz, "mdt"))} · ${esc(it.block_end_by)}</span>
       <span>Length</span><span>${schDur(it.gap_s)}, ${it.n_between} events</span>
+      ${it.why ? `<span>Contradiction</span><span>${esc(it.why)}</span>` : ""}
       ${it.lost ? `<span>Lost events</span><span>${esc(it.lost)}</span>` : ""}
       <span>Power Cycle</span><span>#${it.chain} · ${esc(it.chain_start)} ${esc(fmt(it.chain_t0, tz, "mdt"))} → ${esc(it.chain_end)} ${esc(fmt(it.chain_t1, tz, "mdt"))}</span></div></div>
     <div class="card"><h2>Events</h2><div class="small" style="margin-bottom:6px">Grey: before and after the block. Bold rule: the block's start and end. ✗ highlighted: the failing events. Blue: boot / shutdown. Notifications and standby-bucket changes left out.</div>

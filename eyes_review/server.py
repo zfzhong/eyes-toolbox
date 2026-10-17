@@ -638,6 +638,9 @@ class Handler(BaseHTTPRequestHandler):
             with open(fn) as fh:
                 d = json.load(fh)
             items += d["items"]; totals[d["folder"]] = d.get("totals", {})
+        for fn in sorted(glob.glob(os.path.join(STATE_DIR, "*", "_review", "eventlost_review.json"))):
+            with open(fn) as fh:
+                items += json.load(fh)["items"]
         con = self.db()
         saved = {r["id"]: dict(r) for r in con.execute("SELECT * FROM state_chain_review")}
         for it in items:
