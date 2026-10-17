@@ -77,8 +77,8 @@ def walk(idx, nm, pk, lead=("Activity Stopped",), stop_at_fail=False, inferred=N
                     if R and next_rp(y, n) == "Activity Paused":
                         continue                       # still Resumed under x, its Paused comes later (stays pending)
                     if R:
-                        h = pend_at.get(y, n - 1)     # Paused(infer) right after the hand-over Resumed
-                        fails.append((k, FAIL_RESUMED, y)); infer(h, min(h + 1, n), "Activity Paused", y)
+                        h = pend_at.get(y, n - 1)     # Paused(infer) lost by the hand-over Resumed, which reveals it
+                        fails.append((k, FAIL_RESUMED, y)); infer(h - 1 if h > 0 else None, h, "Activity Paused", y)
                         R[0]["s"] = "P"                # Paused(infer): the screen goes on to its Stopped
                     pending.discard(y)
             for y, Qy in q.items():

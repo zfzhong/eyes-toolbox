@@ -32,7 +32,7 @@ if not os.path.isdir(TB): TB = os.path.expanduser("~/mnt/eyes-toolbox")
 sys.path.insert(0, TB)
 import numpy as np, pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import chain_core
+import chain_core, construct
 from eyeslib.states import device_state as ds
 folder = os.path.abspath(sys.argv[1]); out = os.path.join(folder, "_review")
 ON, OFF = "Screen Interactive", "Screen Non-interactive"
@@ -226,7 +226,7 @@ for f in sorted(glob.glob(os.path.join(folder, "processed", "*_sorted_uniq_reord
     for ci, c in P.iterrows():
         i0, i1 = np.searchsorted(t, c.start_t - 1e-3, "left"), np.searchsorted(t, c.end_t + 1e-3, "right")   # CSV rounding
         if i1 <= i0: continue
-        Bs = blocks_of(t[i0:i1], nm[i0:i1], pk[i0:i1], c, ci)
+        Bs = construct.blocks(t[i0:i1], nm[i0:i1], pk[i0:i1], c, ci)   # 10-17: activity chain + device chain (construct.py)
         allB += Bs
     Bdf = pd.DataFrame(allB); Bdf["h"] = (Bdf.end_t - Bdf.start_t) / 3600
     # block id (David, 10-17): <file>/P<Power Cycle>/<block start, local time to the ms>. The start time is the block's
