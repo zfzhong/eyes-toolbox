@@ -1727,6 +1727,45 @@ function blockOf(t, blocks) {   // the block an event belongs to (a boundary eve
   const b = blocks.filter(b => t >= b.t0 - 1e-3 && t < b.t1 - 1e-3).pop() || blocks.find(b => Math.abs(t - b.t1) < 1e-3);
   return b ? b.block : "";
 }
+
+// The block's events, plus the neighbouring blocks loaded with ▲ / ▼ (David, 10-17: scroll to the block before and after).
+function blkRows(it) {
+  const tz = it.tz, cur = {id: it.block_id, block: it.block, t0: it.block_t0, t1: it.block_t1, start_by: it.block_start_by, end_by: it.block_end_by};
+  const P = SCH.nb.prev, N = SCH.nb.next, blocks = [...P.map(x => x.b).reverse(), cur, ...N.map(x => x.b)];
+  let own = it.events;
+  if (P.length) own = own.filter(e => e[0] === null || e[0] >= it.block_t0 - 1e-3);      // the loaded block replaces the context
+  if (N.length) own = own.filter(e => e[0] === null || e[0] <= it.block_t1 + 1e-3);
+  const key = e => e[0] === null ? null : e[0].toFixed(3) + e[1] + e[2];   // a boundary event belongs to both blocks:
+  const mine = new Set(own.map(key));                                           // show it once, as this block's
+  const nb = L => L.filter(e => e[0] === null || !mine.has(key(e)));
+  const seen = new Set(), ev = [...nb(P.slice().reverse().flatMap(x => x.events)), ...own, ...nb(N.flatMap(x => x.events))]
+    .filter(e => { const k = key(e); if (k === null || mine.has(k)) return true; if (seen.has(k)) return false; seen.add(k); return true; });
+  const BM = blockMarks(ev, blocks.filter(b => b.t1 - b.t0 > 1e-3));
+  let prev = null;
+  return ev.map((e, ei) => {
+    if (e[0] === null) return `<tr><td colspan="5" class="small" style="text-align:center">${esc(e[1])}</td></tr>`;
+    const d = prev === null ? "" : schDur(e[0] - prev); prev = e[0];
+    const bm = BM.get(ei) || "";
+    let bl = blockOf(e[0], blocks.filter(b => b.t1 - b.t0 > 1e-3));
+    if (!bl) bl = e[0] < blocks[0].t0 ? "before" : "after";
+    const nbr = e[3] === "nbr" || (bl !== it.block && !bm);
+    const cls = "r-" + (e[3] === "nbr" ? "before" : e[3]) + (POWER.has(e[1]) ? " r-power" : "") + (bm ? " r-bound" : "");
+    return `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${d}</td><td>${esc(e[1])}${e[3] === "first" ? " ✗" : ""}</td><td>${esc(e[2])}</td><td>${bm ? `<span class="bound-lab">${esc(bm)}</span>` : `<span class="small">${esc(bl)}</span>`}</td></tr>`;
+  }).join("");
+}
+async function blkMore(it, dir) {
+  const L = SCH.nb[dir], from = L.length ? L[L.length - 1].b.id : it.block_id;
+  const btn = $(dir === "prev" ? "#blk-up" : "#blk-down"); btn.textContent = "Loading…";
+  try {
+    const r = await api(`/api/block_nbr?folder=${encodeURIComponent(it.folder)}&block_id=${encodeURIComponent(from)}&dir=${dir}`);
+    if (!r.block) { btn.textContent = dir === "prev" ? "Start of the file" : "End of the file"; btn.disabled = true; return; }
+    L.push({b: r.block, events: r.events});
+    const box = $("#sch-detail"), h0 = box.scrollHeight;
+    $("#blk-rows").innerHTML = blkRows(it);
+    if (dir === "prev") box.scrollTop += box.scrollHeight - h0;                     // keep the view where it was
+    btn.textContent = (dir === "prev" ? "▲ Show the block before " : "▼ Show the block after ") + `(loaded: ${L.map(x => x.b.block).join(", ")})`;
+  } catch (e) { btn.textContent = "Error: " + e.message; }
+}
 const BLK_WHY = {
   "resumed, previous app never Paused": "An app Resumed while the app before it was still waiting for its Paused, and another Resumed came: that Paused is missing.",
   "paused, app not in front": "An app Paused that was not Resumed in this run: its Resumed is missing, or it was in front from before the block.",
@@ -1812,15 +1851,9 @@ async function openSch(id, noflush) {
   $("#sch-detail").scrollTop = 0;
 }
 function openBlk(it, k, vis) {
-  const tz = it.tz; let prev = null;
-  const BM = blockMarks(it.events, [{block: it.block, t0: it.block_t0, t1: it.block_t1, start_by: it.block_start_by, end_by: it.block_end_by}]);
-  const rows = it.events.map((e, ei) => {
-    if (e[0] === null) return `<tr><td colspan="5" class="small" style="text-align:center">${esc(e[1])}</td></tr>`;
-    const d = prev === null ? "" : schDur(e[0] - prev); prev = e[0];
-    const bm = BM.get(ei) || "", bl = e[0] < it.block_t0 - 1e-3 ? "before" : e[0] > it.block_t1 + 1e-3 ? "after" : it.block;
-    const cls = "r-" + e[3] + (POWER.has(e[1]) ? " r-power" : "") + (bm ? " r-bound" : "");
-    return `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${d}</td><td>${esc(e[1])}${e[3] === "first" ? " ✗" : ""}</td><td>${esc(e[2])}</td><td>${bm ? `<span class="bound-lab">${esc(bm)}</span>` : `<span class="small">${esc(bl)}</span>`}</td></tr>`;
-  }).join("");
+  const tz = it.tz;
+  if (!SCH.nb || SCH.nb.id !== it.id) SCH.nb = {id: it.id, prev: [], next: []};
+  const rows = blkRows(it);
   $("#sch-detail").innerHTML = `
     <div class="sc-nav"><button id="sch-prev" ${k > 0 ? "" : "disabled"}>◀</button>
       <h2>${esc(it.block_id || "")} · ${esc(it.block)} block ${esc(fmt(it.block_t0, tz, "mdt"))} → ${esc(fmt(it.block_t1, tz, "mdt"))} · ${esc(it.file)}</h2>
@@ -1840,7 +1873,11 @@ function openBlk(it, k, vis) {
       ${it.lost ? `<span>Lost events</span><span>${esc(it.lost)}</span>` : ""}
       <span class="small">Inside</span><span class="small">Power Cycle #${it.chain + 1} (for reference only)</span></div></div>
     <div class="card"><h2>Events</h2><div class="small" style="margin-bottom:6px">Only this block's events, with a few before and after in grey. <b style="color:#c62828">Red rows: the block's start (▶) and end (■).</b> ✗ highlighted: the failing events. Blue: boot / shutdown. Notifications and standby-bucket changes left out.</div>
-      <div class="events" style="max-height:none"><table class="sch-ev"><thead><tr><th>Time</th><th class="num">After previous</th><th>Event</th><th>App</th><th>Block</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+      <button id="blk-up" class="small" style="margin:4px 0">▲ Show the block before</button>
+      <div class="events" style="max-height:none"><table class="sch-ev"><thead><tr><th>Time</th><th class="num">After previous</th><th>Event</th><th>App</th><th>Block</th></tr></thead><tbody id="blk-rows">${rows}</tbody></table></div>
+      <button id="blk-down" class="small" style="margin:4px 0">▼ Show the block after</button></div>`;
+  $("#blk-up").onclick = () => blkMore(it, "prev");
+  $("#blk-down").onclick = () => blkMore(it, "next");
   $("#sch-prev").onclick = () => k > 0 && openSch(vis[k - 1].id);
   $("#sch-next").onclick = () => k < vis.length - 1 && openSch(vis[k + 1].id);
   document.querySelectorAll("#sch-detail .vbtns button").forEach(b => b.onclick = () => {

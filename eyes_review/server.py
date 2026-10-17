@@ -181,6 +181,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(self.state_events(int(p.rsplit("/", 1)[1]), int(q["i0"]), int(q["i1"])))
             if p == "/api/state_review":
                 return self.send(self.state_review_items())
+            if p == "/api/block_nbr":
+                return self.send(self.block_nbr(q))
             if p == "/api/scenarios":
                 return self.send(self.scenarios())
             if p.startswith("/api/states/window/"):
@@ -627,6 +629,37 @@ class Handler(BaseHTTPRequestHandler):
                          datetime.datetime.now().isoformat(timespec="seconds")))
         con.commit()
         return {"ok": True}
+
+    _blk_cache = {}
+
+    def block_nbr(self, q):
+        """A device-state block next to another one, with its events (David, 10-17: scroll up / down to the block before
+        and after). q: folder, block_id, dir = prev | next. Reads <STATE_DIR>/<folder>/_review/screen_blocks_<file>.csv
+        and the file's processed events."""
+        from eyeslib.states import device_state as ds
+        folder, bid, d = q["folder"], q["block_id"], q.get("dir", "next")
+        pid = bid.split("/")[0]; base = os.path.join(STATE_DIR, folder)
+        key = (folder, pid)
+        if key not in self._blk_cache:
+            B = pd.read_csv(os.path.join(base, "_review", f"screen_blocks_{pid}.csv"))
+            f = glob.glob(os.path.join(base, "processed", f"{pid}_Chronicle*_sorted_uniq_reordered.csv"))[0]
+            ev = ds.load_events(f)
+            ev = ev[~ev.name.isin(["Standby Bucket Changed", "Notification Interruption", "Notification Seen"])]
+            if len(self._blk_cache) > 6: self._blk_cache.clear()
+            self._blk_cache[key] = (B, ev.t.to_numpy(), ev.name.to_numpy(), ev.app_package_name.astype(str).to_numpy())
+        B, t, nm, pk = self._blk_cache[key]
+        i = B.index[B.block_id == bid]
+        if not len(i): return {"error": f"no block {bid}"}
+        j = int(i[0]) + (-1 if d == "prev" else 1)
+        if j < 0 or j >= len(B): return {"block": None}
+        b = B.iloc[j]
+        lo, hi = np.searchsorted(t, b.start_t - 1e-3, "left"), np.searchsorted(t, b.end_t + 1e-3, "right")
+        rows = [[float(t[k]), nm[k], pk[k], "nbr"] for k in range(lo, hi)]
+        if len(rows) > 200: rows = rows[:100] + [[None, f"... {len(rows) - 200} more events ...", "", "nbr"]] + rows[-100:]
+        lost = b.lost if isinstance(b.get("lost"), str) else ""
+        return {"block": dict(id=b.block_id, block=b.block, t0=float(b.start_t), t1=float(b.end_t), start_by=str(b.start_by),
+                              end_by=str(b.end_by), lost=lost, why=b.why if isinstance(b.why, str) else "", cycle=int(b.cycle)),
+                "events": rows}
 
     def state_review_items(self):
         items = []
