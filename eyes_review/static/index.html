@@ -1737,12 +1737,19 @@ async function openSch(id, noflush) {
   const startTxt = it.chain_start === "Bootup" ? "Bootup" : `LogStart <span class="small">(${esc(it.chain_start_by === "file start" ? "start of the file" : "after a shutdown, no boot logged")})</span>`;
   const endTxt = it.chain_end === "Shutdown" ? "Shutdown" : `LogEnd <span class="small">(${esc(it.chain_end_by === "file end" ? "end of the file" : "before a boot, no shutdown logged")})</span>`;
   let prev = null;
+  const B = it.blocks || [], edge = t => { const s = B.find(b => Math.abs(b.t0 - t) < 1e-3 && b.t1 - b.t0 > 1e-3); return s; };
+  const shown = new Set();
   const rows = it.events.map(e => {
     if (e[0] === null) return `<tr><td colspan="4" class="small" style="text-align:center">${esc(e[1])}</td></tr>`;
     const d = prev === null ? "" : schDur(e[0] - prev); prev = e[0];
-    const cls = "r-" + e[3] + (POWER.has(e[1]) ? " r-power" : "");
-    return `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${d}</td><td>${esc(e[1])}${e[3] === "first" ? " ①" : e[3] === "second" ? " ②" : ""}</td><td>${esc(e[2])}</td></tr>`;
+    const bs = edge(e[0]); let mark = "";
+    if (bs && !shown.has(bs.id)) { shown.add(bs.id); mark = `<tr class="r-edge"><td colspan="4">▶ <b>${esc(bs.block)}</b> block starts · ${esc(bs.id.split("/").pop())}</td></tr>`; }
+    const cls = "r-" + e[3] + (POWER.has(e[1]) ? " r-power" : "") + (bs ? " r-edge" : "");
+    return mark + `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${d}</td><td>${esc(e[1])}${e[3] === "first" ? " ①" : e[3] === "second" ? " ②" : ""}</td><td>${esc(e[2])}</td></tr>`;
   }).join("");
+  const blkCard = B.length ? `<div class="card"><h2>Blocks made from this contradiction</h2><table class="sch-ev"><thead><tr><th>Block</th><th>Start</th><th>End</th><th class="num">Length</th><th>Lost events</th></tr></thead><tbody>${
+    B.map(b => `<tr${b.block === "EventLost" ? ' class="r-first"' : ""}><td><b>${esc(b.block)}</b><div class="small">${esc(b.id.split("/").slice(1).join("/"))}</div></td><td>${esc(fmt(b.t0, tz, "mdt"))}<div class="small">${esc(b.start_by)}</div></td><td>${esc(fmt(b.t1, tz, "mdt"))}<div class="small">${esc(b.end_by)}</div></td><td class="num">${schDur(b.t1 - b.t0)}</td><td class="small">${esc(b.lost)}</td></tr>`).join("")
+  }</tbody></table><div class="small" style="margin-top:4px">In the events below, ▶ marks where each block starts.</div></div>` : "";
   $("#sch-detail").innerHTML = `
     <div class="sc-nav"><button id="sch-prev" ${k > 0 ? "" : "disabled"}>◀</button>
       <h2>${esc(it.file)} · ${it.kind === "two screen-ons" ? "two screen-ons in a row" : "two screen-offs in a row"}</h2>
@@ -1755,6 +1762,7 @@ async function openSch(id, noflush) {
       <div class="vbtns">${SCH_V.map(v => `<button data-v="${esc(v)}" class="${it.verdict === v ? "on" : ""}">${esc(v)}</button>`).join("")}</div>
       <textarea id="sch-text" rows="3" style="width:100%" placeholder="What happened here? Which event was lost, or what does the log show?">${esc(it.comment)}</textarea>
       <div class="small" id="sch-state" style="margin-top:4px">${it.updated_at ? `Saved ${esc(it.updated_at.replace("T", " "))}` : "Verdict and comment save as you go."}</div></div>
+    ${blkCard}
     <div class="card"><h2>The Power Cycle</h2><div class="kv">
       <span>Power Cycle</span><b>#${it.chain + 1} of ${esc(it.file)}</b>
       <span>Start</span><span>${startTxt} · ${esc(fmt(it.chain_t0, tz, "mdt"))}</span>

@@ -19,6 +19,8 @@ for folder in sys.argv[1:]:
         cf = os.path.join(out, f"power_cycles_{pid}.csv")
         if not os.path.exists(cf): continue
         C = pd.read_csv(cf)
+        bf = os.path.join(out, f"screen_blocks_{pid}.csv")
+        SB = pd.read_csv(bf) if os.path.exists(bf) else None
         tz = pd.read_csv(f, usecols=["timezone"], nrows=1).timezone.iloc[0] or "UTC"
         ev = ds.load_events(f); t = ev.t.to_numpy(); nm = ev.name.to_numpy(); pk = ev.app_package_name.astype(str).to_numpy()
         keep = np.where(~np.isin(nm, list(QUIET)))[0]
@@ -40,6 +42,10 @@ for folder in sys.argv[1:]:
                                   chain_t0=float(c.start_t), chain_t1=float(c.end_t), chain_repeats=int(c.screen_repeats),
                                   kind="two screen-ons" if nm[a] == ON else "two screen-offs",
                                   t1=float(t[a]), t2=float(t[b]), gap_s=round(float(t[b] - t[a]), 1), n_between=len(keep[ka + 1:kb]),
-                                  events=before + [row(a, "first")] + mid + [row(b, "second")] + after))
+                                  events=before + [row(a, "first")] + mid + [row(b, "second")] + after,
+                                  blocks=[] if SB is None or "block_id" not in SB else
+                                  [dict(id=r.block_id, block=r.block, t0=float(r.start_t), t1=float(r.end_t), start_by=str(r.start_by),
+                                        end_by=str(r.end_by), lost=r.lost if isinstance(r.lost, str) else "")
+                                   for r in SB[(SB.end_t >= t[a] - 1e-3) & (SB.start_t <= t[b] + 1e-3)].itertuples()]))
     json.dump(dict(folder=os.path.basename(folder), items=items), open(os.path.join(out, "state_review.json"), "w"))
     print(os.path.basename(folder), len(items), "items in", len({(i["file"], i["chain"]) for i in items}), "Power Cycles,", len({i["file"] for i in items}), "files")
