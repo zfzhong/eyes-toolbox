@@ -35,7 +35,7 @@ for folder in sys.argv[1:]:
             items.append(dict(id=f"el|{pid}|{int(bi)}", list="eventlost", file=pid, folder=os.path.basename(folder), tz=tz,
                               chain=int(b.cycle), chain_start=c.start, chain_end=c.end, chain_start_by=c.start_by, chain_end_by=c.end_by,
                               chain_t0=float(c.start_t), chain_t1=float(c.end_t), chain_repeats=int(c.screen_repeats),
-                              kind="EventLost: app chain fails inside" if len(fb) else "EventLost: consistent app chains inside",
+                              kind="Inconsistent EventLost block (app chain fails inside)" if len(fb) else "Consistent app events inside an EventLost block",
                               block="EventLost", fail="eventlost-fail" if len(fb) else "eventlost-ok", why=str(b.why),
                               block_t0=float(b.start_t), block_t1=float(b.end_t), block_start_by=str(b.start_by), block_end_by=str(b.end_by),
                               lost=b.lost if isinstance(b.lost, str) else "", t1=float(t[inner[0]]), t2=float(b.end_t),

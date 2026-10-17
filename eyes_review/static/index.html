@@ -259,7 +259,7 @@ input.bl-chk { margin: 0 6px 0 0; vertical-align: -2px; cursor: pointer; }
   <aside class="side">
     <div class="filters">
       <select id="sch-folder"></select>
-      <select id="sch-list-kind"><option value="repeat">Screen repeats</option><option value="block">App-chain failures in blocks</option><option value="eventlost">EventLost blocks with app events</option></select>
+      <select id="sch-list-kind"><option value="repeat">Screen repeats</option><option value="eventlost">EventLost blocks with app events</option><option value="block">Inconsistent blocks (sample)</option></select>
       <select id="sch-status"><option value="todo">To review</option><option value="done">Reviewed</option><option value="all" selected>All</option></select>
     </div>
     <div class="small" id="sch-count" style="padding: 6px 10px; border-bottom: 1px solid var(--line)"></div>
@@ -1673,7 +1673,8 @@ function renderSchList() {
   $("#sch-count").innerHTML = lk === "block"
     ? `<b>${all.length}</b> sampled blocks (up to 12 per block type × failure) in <b>${new Set(all.map(i => i.file)).size}</b> files · <b>${done}</b> reviewed`
     : `<b>${all.length}</b> contradictions in <b>${new Set(all.map(i => i.file)).size}</b> files · <b>${done}</b> reviewed`;
-  if (lk === "eventlost") $("#sch-count").innerHTML = `<b>${all.length}</b> EventLost blocks with app events inside, in <b>${new Set(all.map(i => i.file)).size}</b> files · <b>${done}</b> reviewed`;
+  if (lk === "eventlost") { const ni = all.filter(i => i.fail === "eventlost-fail").length;
+    $("#sch-count").innerHTML = `<b>${ni}</b> Inconsistent and <b>${all.length - ni}</b> Consistent EventLost blocks with app events inside, in <b>${new Set(all.map(i => i.file)).size}</b> files · <b>${done}</b> reviewed`; }
   if (lk === "block" || lk === "eventlost") { renderBlkList(vis); return; }
   let html = "", lastFile = null;
   for (const i of vis) {
@@ -1704,8 +1705,8 @@ const BLK_WHY = {
   "paused, app not in front": "An app Paused that was not Resumed in this run: its Resumed is missing, or it was in front from before the block.",
   "stopped in front, no Paused": "The app in front was Stopped with no Paused: a kill (force-stop, crash; C8) or a lost Paused.",
   "stopped twice": "A Stopped with no Paused-not-Stopped screen of that app: a lost Paused, or a duplicate Stopped.",
-  "eventlost-fail": "This EventLost block is not silent: it has app events inside, and the app chain fails among them (failing events marked ✗ with the kind). Why was the boundary not placed later?",
-  "eventlost-ok": "This EventLost block is not silent: its app events form consistent chains, but the construction from the block edge failed before reaching them.",
+  "eventlost-fail": "Inconsistent block: this EventLost block has app events inside, and the app chain (FIFO triplet queue) fails among them; failing events are marked ✗ with the kind. What was lost, or which pattern is this?",
+  "eventlost-ok": "Consistent app events inside an EventLost block: they form consistent chains, but the construction from the block's edge failed before reaching them.",
   "resumed in ScreenOff": "An app Resumed while the screen was off: a lost screen-on, an app over the lock screen (alarm, call), or a background launch."};
 const BLK_V = ["Paused lost", "Resumed lost", "Stopped lost", "kill", "screen-on lost", "app over lock screen", "background launch", "duplicate event", "device-specific", "logging gap", "other", "unsure"];
 $("#sch-list").onclick = e => { const it = e.target.closest(".item"); if (it) openSch(it.dataset.id); };
