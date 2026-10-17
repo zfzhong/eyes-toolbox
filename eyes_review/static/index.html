@@ -1763,7 +1763,7 @@ async function openSch(id, noflush) {
   }
   SCH.cur = id; renderSchList(); history.replaceState(null, "", "#sch-" + encodeURIComponent(id));
   const vis = schVisible(), k = vis.findIndex(i => i.id === id), tz = it.tz;
-  if (it.list === "block") return openBlk(it, k, vis);
+  if (it.list === "block" || it.list === "eventlost") return openBlk(it, k, vis);
   const startTxt = it.chain_start === "Bootup" ? "Bootup" : `LogStart <span class="small">(${esc(it.chain_start_by === "file start" ? "start of the file" : "after a shutdown, no boot logged")})</span>`;
   const endTxt = it.chain_end === "Shutdown" ? "Shutdown" : `LogEnd <span class="small">(${esc(it.chain_end_by === "file end" ? "end of the file" : "before a boot, no shutdown logged")})</span>`;
   let prev = null;
