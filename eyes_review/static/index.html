@@ -137,6 +137,10 @@ table.sch-ev tr.r-before td, table.sch-ev tr.r-after td { color: var(--quiet); }
 table.sch-ev tr.r-first td, table.sch-ev tr.r-second td { background: var(--warn-soft); font-weight: 600; }
 table.sch-ev tr.r-power td { background: var(--accent-soft); }
 table.sch-ev tr.r-edge td { font-weight: 600; border-top: 1px solid var(--line); }
+table.sch-ev tr.r-bound td { color: #c62828; font-weight: 700; background: rgba(198, 40, 40, 0.08); }
+table.sch-ev tr.r-bound td:first-child { border-left: 4px solid #c62828; }
+table.sch-ev .bound-lab { color: #c62828; font-weight: 700; white-space: nowrap; }
+@media (prefers-color-scheme: dark) { table.sch-ev tr.r-bound td, table.sch-ev .bound-lab { color: #ff6b6b; } table.sch-ev tr.r-bound td:first-child { border-left-color: #ff6b6b; } }
 .vbtns { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 8px; }
 .vbtns button { font: inherit; font-size: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 14px; padding: 3px 10px; cursor: pointer; }
 .vbtns button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
@@ -1700,6 +1704,29 @@ function renderBlkList(vis) {
   }
   $("#sch-list").innerHTML = html || `<div class="empty">Nothing in this list. Run block_fails.py and block_review_build.py.</div>`;
 }
+
+// Mark the start and end event of each block (David, 10-17: "clearly mark the start and end of a block. Using red").
+// A block end is the next block's start, so one event can carry both labels. Ties at one instant: the screen event the
+// block names (start_by / end_by), else for a chain-set end the last (start) / first (end) activity event at that time.
+function blockMarks(events, blocks) {
+  const marks = new Map(), add = (i, s) => { if (i >= 0) marks.set(i, (marks.get(i) ? marks.get(i) + " · " : "") + s); };
+  const at = t => events.map((e, i) => [e, i]).filter(([e]) => e[0] !== null && Math.abs(e[0] - t) < 1e-3);
+  const pick = (t, by, last) => {
+    const c = at(t); if (!c.length) return -1;
+    const named = c.find(([e]) => e[1] === by); if (named) return named[1];
+    const act = c.filter(([e]) => String(e[1]).startsWith("Activity"));
+    const L = act.length ? act : c; return (last ? L[L.length - 1] : L[0])[1];
+  };
+  for (const b of blocks) {
+    add(pick(b.t0, b.start_by, true), `▶ start of ${b.block}`);
+    add(pick(b.t1, b.end_by, false), `■ end of ${b.block}`);
+  }
+  return marks;
+}
+function blockOf(t, blocks) {   // the block an event belongs to (a boundary event goes with the block it starts)
+  const b = blocks.filter(b => t >= b.t0 - 1e-3 && t < b.t1 - 1e-3).pop() || blocks.find(b => Math.abs(t - b.t1) < 1e-3);
+  return b ? b.block : "";
+}
 const BLK_WHY = {
   "resumed, previous app never Paused": "An app Resumed while the app before it was still waiting for its Paused, and another Resumed came: that Paused is missing.",
   "paused, app not in front": "An app Paused that was not Resumed in this run: its Resumed is missing, or it was in front from before the block.",
@@ -1737,19 +1764,17 @@ async function openSch(id, noflush) {
   const startTxt = it.chain_start === "Bootup" ? "Bootup" : `LogStart <span class="small">(${esc(it.chain_start_by === "file start" ? "start of the file" : "after a shutdown, no boot logged")})</span>`;
   const endTxt = it.chain_end === "Shutdown" ? "Shutdown" : `LogEnd <span class="small">(${esc(it.chain_end_by === "file end" ? "end of the file" : "before a boot, no shutdown logged")})</span>`;
   let prev = null;
-  const B = it.blocks || [], edge = t => { const s = B.find(b => Math.abs(b.t0 - t) < 1e-3 && b.t1 - b.t0 > 1e-3); return s; };
-  const shown = new Set();
-  const rows = it.events.map(e => {
-    if (e[0] === null) return `<tr><td colspan="4" class="small" style="text-align:center">${esc(e[1])}</td></tr>`;
+  const B = it.blocks || [], BM = blockMarks(it.events, B.filter(b => b.t1 - b.t0 > 1e-3));
+  const rows = it.events.map((e, ei) => {
+    if (e[0] === null) return `<tr><td colspan="5" class="small" style="text-align:center">${esc(e[1])}</td></tr>`;
     const d = prev === null ? "" : schDur(e[0] - prev); prev = e[0];
-    const bs = edge(e[0]); let mark = "";
-    if (bs && !shown.has(bs.id)) { shown.add(bs.id); mark = `<tr class="r-edge"><td colspan="4">▶ <b>${esc(bs.block)}</b> block starts · ${esc(bs.id.split("/").pop())}</td></tr>`; }
-    const cls = "r-" + e[3] + (POWER.has(e[1]) ? " r-power" : "") + (bs ? " r-edge" : "");
-    return mark + `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${d}</td><td>${esc(e[1])}${e[3] === "first" ? " ①" : e[3] === "second" ? " ②" : ""}</td><td>${esc(e[2])}</td></tr>`;
+    const bm = BM.get(ei) || "", mark = "", bl = blockOf(e[0], B.filter(b => b.t1 - b.t0 > 1e-3));
+    const cls = "r-" + e[3] + (POWER.has(e[1]) ? " r-power" : "") + (bm ? " r-bound" : "");
+    return mark + `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${d}</td><td>${esc(e[1])}${e[3] === "first" ? " ①" : e[3] === "second" ? " ②" : ""}</td><td>${esc(e[2])}</td><td>${bm ? `<span class="bound-lab">${esc(bm)}</span>` : `<span class="small">${esc(bl)}</span>`}</td></tr>`;
   }).join("");
   const blkCard = B.length ? `<div class="card"><h2>Blocks made from this contradiction</h2><table class="sch-ev"><thead><tr><th>Block</th><th>Start</th><th>End</th><th class="num">Length</th><th>Lost events</th></tr></thead><tbody>${
     B.map(b => `<tr${b.block === "EventLost" ? ' class="r-first"' : ""}><td><b>${esc(b.block)}</b><div class="small">${esc(b.id.split("/").slice(1).join("/"))}</div></td><td>${esc(fmt(b.t0, tz, "mdt"))}<div class="small">${esc(b.start_by)}</div></td><td>${esc(fmt(b.t1, tz, "mdt"))}<div class="small">${esc(b.end_by)}</div></td><td class="num">${schDur(b.t1 - b.t0)}</td><td class="small">${esc(b.lost)}</td></tr>`).join("")
-  }</tbody></table><div class="small" style="margin-top:4px">In the events below, ▶ marks where each block starts.</div></div>` : "";
+  }</tbody></table><div class="small" style="margin-top:4px">In the events below, red rows are block boundaries: ▶ start, ■ end.</div></div>` : "";
   $("#sch-detail").innerHTML = `
     <div class="sc-nav"><button id="sch-prev" ${k > 0 ? "" : "disabled"}>◀</button>
       <h2>${esc(it.file)} · ${it.kind === "two screen-ons" ? "two screen-ons in a row" : "two screen-offs in a row"}</h2>
@@ -1770,7 +1795,7 @@ async function openSch(id, noflush) {
       <span>Length</span><span>${schDur(it.chain_t1 - it.chain_t0)}</span>
       <span>Contradictions in this Power Cycle</span><span>${it.chain_repeats}</span></div></div>
     <div class="card"><h2>Events</h2><div class="small" style="margin-bottom:6px">Grey: before ① and after ②. Highlighted: the two screen events. Blue: boot / shutdown markers. Notifications and standby-bucket changes left out.</div>
-      <div class="events" style="max-height:none"><table class="sch-ev"><thead><tr><th>Time</th><th class="num">After previous</th><th>Event</th><th>App</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+      <div class="events" style="max-height:none"><table class="sch-ev"><thead><tr><th>Time</th><th class="num">After previous</th><th>Event</th><th>App</th><th>Block</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   $("#sch-prev").onclick = () => k > 0 && openSch(vis[k - 1].id);
   $("#sch-next").onclick = () => k < vis.length - 1 && openSch(vis[k + 1].id);
   document.querySelectorAll("#sch-detail .vbtns button").forEach(b => b.onclick = () => {
@@ -1785,12 +1810,13 @@ async function openSch(id, noflush) {
 }
 function openBlk(it, k, vis) {
   const tz = it.tz; let prev = null;
-  const rows = it.events.map(e => {
-    if (e[0] === null) return `<tr><td colspan="4" class="small" style="text-align:center">${esc(e[1])}</td></tr>`;
+  const BM = blockMarks(it.events, [{block: it.block, t0: it.block_t0, t1: it.block_t1, start_by: it.block_start_by, end_by: it.block_end_by}]);
+  const rows = it.events.map((e, ei) => {
+    if (e[0] === null) return `<tr><td colspan="5" class="small" style="text-align:center">${esc(e[1])}</td></tr>`;
     const d = prev === null ? "" : schDur(e[0] - prev); prev = e[0];
-    const edge = Math.abs(e[0] - it.block_t0) < 1e-3 || Math.abs(e[0] - it.block_t1) < 1e-3;
-    const cls = "r-" + e[3] + (POWER.has(e[1]) ? " r-power" : "") + (edge ? " r-edge" : "");
-    return `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${d}</td><td>${esc(e[1])}${e[3] === "first" ? " ✗" : ""}</td><td>${esc(e[2])}</td></tr>`;
+    const bm = BM.get(ei) || "", bl = e[0] < it.block_t0 - 1e-3 ? "before" : e[0] > it.block_t1 + 1e-3 ? "after" : it.block;
+    const cls = "r-" + e[3] + (POWER.has(e[1]) ? " r-power" : "") + (bm ? " r-bound" : "");
+    return `<tr class="${cls}"><td>${esc(fmt(e[0], tz, "mdt"))}</td><td class="num">${d}</td><td>${esc(e[1])}${e[3] === "first" ? " ✗" : ""}</td><td>${esc(e[2])}</td><td>${bm ? `<span class="bound-lab">${esc(bm)}</span>` : `<span class="small">${esc(bl)}</span>`}</td></tr>`;
   }).join("");
   $("#sch-detail").innerHTML = `
     <div class="sc-nav"><button id="sch-prev" ${k > 0 ? "" : "disabled"}>◀</button>
@@ -1810,8 +1836,8 @@ function openBlk(it, k, vis) {
       ${it.why ? `<span>Contradiction</span><span>${esc(it.why)}</span>` : ""}
       ${it.lost ? `<span>Lost events</span><span>${esc(it.lost)}</span>` : ""}
       <span class="small">Inside</span><span class="small">Power Cycle #${it.chain + 1} (for reference only)</span></div></div>
-    <div class="card"><h2>Events</h2><div class="small" style="margin-bottom:6px">Only this block's events, with a few before and after in grey. Bold rule: the block's start and end. ✗ highlighted: the failing events. Blue: boot / shutdown. Notifications and standby-bucket changes left out.</div>
-      <div class="events" style="max-height:none"><table class="sch-ev"><thead><tr><th>Time</th><th class="num">After previous</th><th>Event</th><th>App</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    <div class="card"><h2>Events</h2><div class="small" style="margin-bottom:6px">Only this block's events, with a few before and after in grey. <b style="color:#c62828">Red rows: the block's start (▶) and end (■).</b> ✗ highlighted: the failing events. Blue: boot / shutdown. Notifications and standby-bucket changes left out.</div>
+      <div class="events" style="max-height:none"><table class="sch-ev"><thead><tr><th>Time</th><th class="num">After previous</th><th>Event</th><th>App</th><th>Block</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   $("#sch-prev").onclick = () => k > 0 && openSch(vis[k - 1].id);
   $("#sch-next").onclick = () => k < vis.length - 1 && openSch(vis[k + 1].id);
   document.querySelectorAll("#sch-detail .vbtns button").forEach(b => b.onclick = () => {
