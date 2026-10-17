@@ -15,44 +15,15 @@ TB = os.path.expanduser("~/workspace/eyes-toolbox")
 if not os.path.isdir(TB): TB = os.path.expanduser("~/mnt/eyes-toolbox")
 sys.path.insert(0, TB)
 import numpy as np, pandas as pd
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import chain_core
 from eyeslib.states import device_state as ds
 APP = {"Activity Resumed", "Activity Paused", "Activity Stopped"}
 folder = os.path.abspath(sys.argv[1]); out = os.path.join(folder, "_review")
 
 def walk(idx, nm, pk, lead=("Activity Stopped",)):
-    """Construction with restarts. Returns [(index, failure kind, app in front or None)]."""
-    fails = []; front = pending = None; waiting = collections.Counter(); seen = set(); seen_r = False
-    nxt = {}; later = [None] * len(idx)
-    for n in range(len(idx) - 1, -1, -1):
-        later[n] = nxt.get(pk[idx[n]])                  # the next Resumed / Paused of that app (Stopped skipped)
-        if nm[idx[n]] != "Activity Stopped": nxt[pk[idx[n]]] = nm[idx[n]]
-    for n, k in enumerate(idx):
-        e, x = nm[k], pk[k]
-        if not seen_r and e in lead:
-            if e == "Activity Paused": waiting[x] += 1
-            seen.add(x); continue
-        why = None
-        if e == "Activity Resumed":
-            seen_r = True
-            if pending is not None: why = "resumed, previous app never Paused"; fr = pending; pending = None
-            if front is not None: pending = front
-            front = x
-        elif e == "Activity Paused":
-            if x == pending: pending = None; waiting[x] += 1
-            elif x == front: front = None; waiting[x] += 1
-            else: why = "paused, app not in front"; fr = front; waiting[x] += 1
-        else:
-            if waiting[x] > 0: waiting[x] -= 1
-            elif x not in seen: pass
-            elif (x == front or x == pending) and later[n] == "Activity Paused": pass   # an earlier screen's Stopped (10-16)
-            elif x == front or x == pending:
-                why = "stopped in front, no Paused"; fr = x
-                if x == front: front = None
-                else: pending = None
-            else: why = "stopped twice"; fr = None
-        seen.add(x)
-        if why: fails.append((k, why, fr))
-    return fails
+    """Construction with restarts: all failures [(index, kind, app)], from the FIFO triplet queue of chain_core.py."""
+    return chain_core.walk(idx, nm, pk, lead)[1]
 
 rows = []; per = []
 for f in sorted(glob.glob(os.path.join(folder, "processed", "*_sorted_uniq_reordered.csv"))):

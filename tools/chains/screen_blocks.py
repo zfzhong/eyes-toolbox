@@ -31,6 +31,8 @@ TB = os.path.expanduser("~/workspace/eyes-toolbox")
 if not os.path.isdir(TB): TB = os.path.expanduser("~/mnt/eyes-toolbox")
 sys.path.insert(0, TB)
 import numpy as np, pandas as pd
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import chain_core
 from eyeslib.states import device_state as ds
 folder = os.path.abspath(sys.argv[1]); out = os.path.join(folder, "_review")
 ON, OFF = "Screen Interactive", "Screen Non-interactive"
@@ -67,40 +69,9 @@ def app_chains(idx, nm, pk):
     return out
 
 def run_until_fail(idx, nm, pk, lead=("Activity Stopped",)):
-    """David, 10-16: "we construct the app level logical chain until we fail". Walk the app events idx in order, chain
-    after chain (a chain that ended properly may be followed by a new Resumed), and return how many events follow
-    logically before the first one that does not. Same rules as app_chains. Before the first Resumed, the events in
-    lead are accepted: their screens began before idx (a Stopped of a screen Paused earlier; going back from a
-    screen-off, also a Paused of an app Resumed earlier). Later, a Stopped of an app not yet seen in idx is accepted too
-    (its Paused came before idx), and so is a Stopped of the app in front whose own Paused comes later (10-16, David: "we
-    need a bit flexibility when constructing triplets"; 4103_C01: three Chrome screens R P R P R S S P S)."""
-    front = pending = None; waiting = {}; seen_r = False; seen = set()
-    nxt = {}; later = [None] * len(idx)                 # the next event of the same app, for each position
-    for n in range(len(idx) - 1, -1, -1):
-        later[n] = nxt.get(pk[idx[n]])                  # the next Resumed / Paused of that app (Stopped skipped)
-        if nm[idx[n]] != "Activity Stopped": nxt[pk[idx[n]]] = nm[idx[n]]
-    for n, k in enumerate(idx):
-        e, x = nm[k], pk[k]; ok = False
-        if not seen_r and e in lead:
-            if e == "Activity Paused": waiting[x] = waiting.get(x, 0) + 1
-            seen.add(x); continue
-        if e == "Activity Resumed":
-            seen_r = True
-            if pending is None:
-                if front is not None: pending, front, ok = front, x, True
-                else: front, ok = x, True
-        elif e == "Activity Paused":
-            if x == pending: pending = None; waiting[x] = waiting.get(x, 0) + 1; ok = True
-            elif x == front: front = None; waiting[x] = waiting.get(x, 0) + 1; ok = True
-        elif e == "Activity Stopped":
-            if waiting.get(x, 0) > 0: waiting[x] -= 1; ok = True
-            elif x not in seen: ok = True               # its Paused came before idx
-            elif (x == front or x == pending) and later[n] == "Activity Paused":
-                ok = True                               # (10-16) the front screen of x is still open (its Paused comes
-                                                        # later): this Stopped is an earlier screen's, Paused before idx
-        if not ok: return n
-        seen.add(x)
-    return len(idx)
+    """David, 10-16: "we construct the app level logical chain until we fail". How many app events of idx follow
+    logically before the first that does not, with the FIFO triplet queue of chain_core.py (S7-S9 accepted)."""
+    return chain_core.walk(idx, nm, pk, lead, stop_at_fail=True)[0]
 
 def chain_end_front(idx, nm, pk):
     """The app still in front (Resumed, not Paused) after the events idx, in order; None if none."""
